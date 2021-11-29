@@ -20,41 +20,52 @@
 		"commands": [
 			{
 				"command": "fatshark-code-assist.stingrayConnect",
-				"title": "Stingray Connect"
+				"title": "Connect",
+				"category": "Stingray"
 			},
 			{
 				"command": "fatshark-code-assist.stingrayRecompile",
-				"title": "Stingray Recompile"
+				"title": "Recompile",
+				"category": "Stingray"
 			},
 			{
 				"command": "fatshark-code-assist.executeSelection",
-				"title": "Stingray Execute Selection"
+				"title": "Execute Selection",
+				"category": "Stingray"
+			},
+			{
+				"command": "fatshark-code-assist.executeFile",
+				"title": "Execute File",
+				"category": "Stingray"
 			},
 			{
 				"command": "fatshark-code-assist.recompileFile",
-				"title": "Stingray Recompile File"
+				"title": "Recompile File",
+				"category": "Stingray"
 			},
 			{
 				"command": "fatshark-code-assist.stingrayDisconnect",
-				"title": "Stingray Disconnect"
+				"title": "Disconnect",
+				"category": "Stingray"
 			},
 			{
 				"command": "fatshark-code-assist.stingrayCommand",
-				"title": "Stingray Command Fixed"
+				"title": "Command",
+				"category": "Stingray"
+			},
+			{
+				"command": "fatshark-code-assist.stingrayLua",
+				"title": "Execute Lua",
+				"category": "Stingray"
 			}
 		],
 		"menus": {
 			"editor/context": [
 				{
                     "command": "fatshark-code-assist.executeSelection",
-                    "group": "z_commands",
+                    "group": "Stingray",
                     "when": "editorHasSelection"
                 }
-			],
-			"commandPalette": [
-				{
-					"command": "fatshark-code-assist.stingrayCommand"
-				}
 			]
 		},
         "configuration": {

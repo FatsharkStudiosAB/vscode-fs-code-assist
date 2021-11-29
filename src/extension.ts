@@ -2,7 +2,6 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { connectionHandler } from './connection-handler';
-import { StingrayConnection } from './stingray-connection';
 import { guid } from './utils';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -45,9 +44,29 @@ export function activate(context: vscode.ExtensionContext) {
 		connectionHandler.closeAll();
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayCommand', (commandType, ...args) => {
-		//TODO doesn't open command palette so it's useless
-		connectionHandler.getAllGames().forEach(game => game.sendCommand(commandType, ...args));
+	let commandBoxOptions = {
+		prompt: "Enter Stingray command.",
+	};
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayCommand', () => {
+		vscode.window.showInputBox(commandBoxOptions).then( (value: string | undefined) => {
+			let commandArgs = value?.split(" ") || [];
+			if (commandArgs.length > 0) {
+				let commandType = commandArgs[0];
+				commandArgs.splice(0, 1);
+				connectionHandler.getAllGames().forEach(game => game.sendCommand(commandType, ...commandArgs));
+			}
+		});
+	}));
+
+	let luaBoxOptions = {
+		prompt: "Enter Lua to extecute.",
+	};
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayLua', () => {
+		vscode.window.showInputBox(luaBoxOptions).then( (value: string | undefined) => {
+			if (value) {
+				connectionHandler.getAllGames().forEach(game => game.sendLua(value));
+			}
+		});
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.executeSelection', () => {
@@ -56,7 +75,13 @@ export function activate(context: vscode.ExtensionContext) {
 			let selection = textEditor.selection;
 			let selectionText = textEditor.document.getText(selection);
 			connectionHandler.getGame(14000).sendLua(selectionText);
-			console.log(selectionText);
+		}
+	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.executeFile', () => {
+		let textEditor = vscode.window.activeTextEditor;
+		if (textEditor) {
+			connectionHandler.getGame(14000).sendLua(textEditor.document.getText());
 		}
 	}));
 

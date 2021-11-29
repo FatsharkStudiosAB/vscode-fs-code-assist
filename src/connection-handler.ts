@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { StingrayConnection } from "./stingray-connection";
 
+const MAX_CONNECTIONS = 32;
+
 export class ConnectionHandler {
     _compiler?: StingrayConnection;
     _game: Map<number, StingrayConnection>;
@@ -36,19 +38,19 @@ export class ConnectionHandler {
     }
 
     connectAllGames(portStart:number, range:number) {
-        
+        range = Math.min(range, MAX_CONNECTIONS);
+        for (let i = 0; i < range; ++i) {
+            this.getGame(portStart+i);
+        }
     }
 
     getAllGames() {
         let allGameConnections = [];
-        for (let i = 0; i < 32; i++){
-            allGameConnections[i] = this.getGame(14000+i);
+        for (let [port, game] of this._game) {
+            if (!game.isClosed()) {
+                allGameConnections.push(game);
+            }
         }
-        // for (let [port, game] of this._game) {
-        //     if (!game.isClosed()) {
-        //         allGameConnections.push(game);
-        //     }
-        // }
         return allGameConnections;
     }
 
