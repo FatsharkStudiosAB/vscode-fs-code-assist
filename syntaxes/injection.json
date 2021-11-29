@@ -1,0 +1,129 @@
+{
+  "scopeName": "fatshark-preprocessor.injection",
+  "injectionSelector": "L:source.lua",
+  "patterns": [
+    {
+      "include": "#preprocessor-directives"
+    }
+  ],
+  "repository": {
+    "preprocessor-directives": {
+      "patterns": [
+        {
+          "name": "meta.preprocessor.fatshark",
+          "begin": "((--)IF_LINE)\\b",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.preprocessor.fatshark"
+            },
+            "2": {
+              "name": "punctuation.definition.preprocessor.fatshark"
+            }
+          },
+          "end": "\\n",
+          "patterns": [
+            {
+              "include": "#directive-condition"
+            }
+          ]
+        },
+        {
+          "name": "meta.preprocessor.fatshark",
+          "begin": "^\\s*((--)IF_BEGIN)\\b",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.preprocessor.fatshark"
+            },
+            "2": {
+              "name": "punctuation.definition.preprocessor.fatshark"
+            }
+          },
+          "end": "^\\s*((--)IF_END)\\b(.*)\\n",
+          "endCaptures": {
+            "1": {
+              "name": "keyword.control.preprocessor.fatshark"
+            },
+            "2": {
+              "name": "punctuation.definition.preprocessor.fatshark"
+            },
+            "3": {
+              "name": "comment.line.preprocessor.fatshark"
+            }
+          },
+          "patterns": [
+            {
+              "begin": "\\G",
+              "end": "(?=\\n)",
+              "patterns": [
+                {
+                  "include": "#directive-condition"
+                }
+              ]
+            },
+            {
+              "include": "source.lua"
+            }
+          ]
+        },
+        {
+          "name": "meta.preprocessor.fatshark",
+          "begin": "^\\s*((--)(KEEP|REMOVE)_IF)\\b",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.preprocessor.fatshark"
+            },
+            "2": {
+              "name": "punctuation.definition.preprocessor.fatshark"
+            }
+          },
+          "end": "^\\s*((--)\\2_IF)\\b(.*)\\n",
+          "endCaptures": {
+            "1": {
+              "name": "keyword.control.preprocessor.fatshark"
+            },
+            "2": {
+              "name": "punctuation.definition.preprocessor.fatshark"
+            },
+            "3": {
+              "name": "comment.line.preprocessor.fatshark"
+            }
+          },
+          "patterns": [
+            {
+              "match": "\\G\\s*(win32|ps4|xb1)",
+              "name": "constant.language.preprocessor.fatshark"
+            },
+            {
+              "include": "source.lua"
+            }
+          ]
+        }
+      ]
+    },
+    "directive-condition": {
+      "patterns": [
+        {
+          "match": "\\(",
+          "name": "punctuation.parens.begin.preprocessor.fatshark"
+        },
+        {
+          "match": "\\)",
+          "name": "punctuation.parens.end.preprocessor.fatshark"
+        },
+        {
+          "match": "\\b(?:and|or|not)\\b",
+          "name": "keyword.operator.logical.preprocessor.fatshark"
+        },
+        {
+          "match": "\\b(?:win32|xb1|ps4)\\b",
+          "name": "constant.language.preprocessor.fatshark"
+        },
+        {
+          "match": "\\b[A-Z]\\w*\\b",
+          "name": "entity.name.function.preprocessor.fatshark"
+        }
+      ],
+      "name": "meta.preprocessor.fatshark"
+    }
+  }
+}

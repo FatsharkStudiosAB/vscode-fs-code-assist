@@ -1,0 +1,291 @@
+{
+	"name": "Stingray Crashlog",
+	"scopeName": "source.crashlog",
+	"patterns": [
+		{
+			"begin": "(?m)^(\\[[^\\]]+\\])",
+			"beginCaptures": { "0": { "name": "entity.name.tag.metadata.crashlog" } },
+			"end": "\\n",
+			"contentName": "constant.language.crashlog"
+		},
+		{
+			"name": "meta.crashify-property.crashlog",
+			"begin": "(\\d{2}:\\d{2}:\\d{2}\\.\\d{3}) (\\[Lua\\]) (<<crashify-property>>)",
+			"beginCaptures": {
+				"1": { "name": "date.crashlog comment" },
+				"2": { "name": "entity.name.tag" },
+				"3": { "name": "entity.name.tag.error.crashlog" }
+			},
+			"end": "<</crashify-property>>",
+			"endCaptures": { "0": { "name": "entity.name.tag" } },
+			"patterns": [
+				{
+					"match": "(\\w+) (=)",
+					"captures": {
+						"1": { "name": "variable.parameter.property.crashlog" },
+						"2": { "name": "keyword.operator.crashlog" }
+					}
+				},
+				{
+					"include": "#lua-values"
+				}
+			]
+		},
+		{
+			"name": "meta.crashify-exception.crashlog",
+			"begin": "(\\d{2}:\\d{2}:\\d{2}\\.\\d{3}) (\\[Lua\\]) (<<crashify-exception>>)",
+			"beginCaptures": {
+				"1": { "name": "date.crashlog comment" },
+				"2": { "name": "entity.name.tag" },
+				"3": { "name": "entity.name.tag.error.crashlog" }
+			},
+			"end": "<</crashify-exception>>",
+			"endCaptures": { "0": { "name": "entity.name.tag" } },
+			"patterns": [
+				{
+					"name": "meta.crashify-exception.info.crashlog",
+					"begin": "<<(system|message)>>",
+					"beginCaptures": { "0": { "name": "entity.name.tag.locals-self.crashlog" } },
+					"end": "<</\\1>>",
+					"endCaptures": { "0": { "name": "entity.name.tag.locals-self.crashlog" } }
+				},
+				{
+					"name": "meta.crashify-exception.info.crashlog",
+					"begin": "<<(callstack)>>",
+					"beginCaptures": { "0": { "name": "entity.name.tag.locals-self.crashlog" } },
+					"end": "<</\\1>>",
+					"endCaptures": { "0": { "name": "entity.name.tag.locals-self.crashlog" } },
+					"patterns": [ { "include": "#exception-data" } ]
+				}
+			]
+		},
+		{
+			"name": "meta.lua-error.crashlog",
+			"begin": "(?m)^(\\d{2}:\\d{2}:\\d{2}\\.\\d{3}) (<<Lua Error>>)(.*)(<</Lua Error>>)",
+			"beginCaptures": {
+				"1": { "name": "date.crashlog comment" },
+				"2": { "name": "entity.name.tag.error.crashlog" },
+				"3": { "name": "string.other.error.crashlog" },
+				"4": { "name": "entity.name.tag.error.crashlog" }
+			},
+			"end": "\\[Log end\\]",
+			"endCaptures": { "0": { "name": "entity.name.tag.metadata.crashlog" } },
+			"patterns": [ { "include": "#crash-data" } ]
+		},
+		{
+			"name": "meta.crash.crashlog",
+			"begin": "(?m)^(\\d{2}:\\d{2}:\\d{2}\\.\\d{3}) (?=<<Crash>>)",
+			"beginCaptures": {
+				"1": { "name": "date.crashlog comment" }
+			},
+			"end": "\\[Log end\\]",
+			"endCaptures": { "0": { "name": "entity.name.tag.metadata.crashlog" } },
+			"patterns": [
+				{
+					"begin": "<<(Crash)>>",
+					"beginCaptures": { "0": { "name": "entity.name.tag.crashlog" } },
+					"end": "<</\\1>>",
+					"endCaptures": { "0": { "name": "entity.name.tag.crashlog" } },
+					"contentName": "string.other.error.crashlog"
+				},
+				{
+					"include": "#crash-data"
+				}
+			]
+		},
+		{
+			"name": "meta.generic-error.crashlog token.error-token",
+			"begin": "(\\d{2}:\\d{2}:\\d{2}\\.\\d{3}) error:",
+			"beginCaptures": { "1": { "name": "date.crashlog comment" } },
+			"end": "(?=\\d{2}:\\d{2}:\\d{2}\\.\\d{3})"
+		},
+		{
+			"name": "meta.generic-warning.crashlog token.warn-token",
+			"begin": "(\\d{2}:\\d{2}:\\d{2}\\.\\d{3}) warning:",
+			"beginCaptures": { "1": { "name": "date.crashlog comment" } },
+			"end": "(?=\\d{2}:\\d{2}:\\d{2}\\.\\d{3})"
+		},
+		{
+			"begin": "(?m)^(\\d{2}:\\d{2}:\\d{2}\\.\\d{3}) (\\[[^\\]]+\\](?: \\[[^\\]]+\\])?)",
+			"beginCaptures": {
+				"1": { "name": "date.crashlog comment" },
+				"2": { "name": "entity.name.tag.system-name.crashlog" }
+			},
+			"end": "(?=\\d{2}:\\d{2}:\\d{2}\\.\\d{3})",
+			"patterns": [ { "include": "#lua-values" } ]
+		}
+	],
+	"repository": {
+		"lua-values": {
+			"patterns": [
+				{
+					"match": "\\bfalse|nil|true\\b",
+					"name": "constant.language.crashlog"
+				},
+				{
+					"match": "(table): \\h{16}",
+					"captures": {
+						"1": {
+							"name": "storage.type.table.crashlog"
+						}
+					}
+				},
+				{
+					"match": "\\[(function|World|Unit|unknown)\\]",
+					"name": "entity.name.function.crashlog"
+				},
+				{
+					"match": "\\b\\-?\\d+(?:\\.\\d+)?\\b(?!:)",
+					"name": "constant.numeric.crashlog"
+				},
+				{
+					"begin": "\"|`",
+					"end": "\\0",
+					"name": "string.single-line.crashlog",
+					"patterns": [
+						{
+							"match": "\\\\[abfnrtvz\\\\\"'\\n]",
+							"name": "constant.character.escape.crashlog"
+						}
+					]
+				},
+				{
+					"match": "\\b\\w+/[\\w/]+\\b",
+					"name": "string.other.resource-path.crashlog"
+				},
+				{
+					"match": "\\b[;=]\\b",
+					"name": "keyword.language.punctuation.crashlog"
+				},
+				{
+					"match": "\\b[0-9a-f]{15}\\b",
+					"name": "storage.type.steamid.crashlog"
+				}
+			]
+		},
+		"callstack": {
+			"patterns": [
+				{
+					"match": "(\\[\\d+\\]) .*?/?(\\w+?\\.lua:\\d+:)? ?in function ([^\\n]+)",
+					"captures": {
+						"1": {
+							"name": "constant.numeric.stack-level.crashlog"
+						},
+						"2": {
+							"name": "support.function.crashlog"
+						},
+						"3": {
+							"name": "entity.name.function.crashlog"
+						}
+					}
+				}
+			]
+		},
+		"locals-self": {
+			"patterns": [
+				{
+					"match": "(?m)^  (\\[\\d+\\])",
+					"name": "constant.numeric.stack-level.crashlog"
+				},
+				{
+					"match": "(?:(self)|\\w+) (=)",
+					"captures": {
+						"1": {
+							"name": "variable.language.crashlog"
+						},
+						"2": {
+							"name": "keyword.operator.crashlog"
+						}
+					}
+				},
+				{
+					"include": "#lua-values"
+				}
+			]
+		},
+		"crash-data": {
+			"patterns": [
+				{
+					"name": "meta.lua-stack.crashlog",
+					"begin": "<<Lua Stack>>",
+					"beginCaptures": { "0": { "name": "entity.name.tag.callstack.crashlog" } },
+					"end": "<</Lua Stack>>",
+					"endCaptures": { "0": { "name": "entity.name.tag.callstack.crashlog" } },
+					"patterns": [ { "include": "#callstack" } ]
+				},
+				{
+					"name": "meta.lua-locals.crashlog",
+					"begin": "<<Lua (Locals|Self)>>",
+					"beginCaptures": { "0": { "name": "entity.name.tag.locals-self.crashlog" } },
+					"end": "<</Lua \\1>>",
+					"endCaptures": { "0": { "name": "entity.name.tag.locals-self.crashlog" } },
+					"patterns": [ { "include": "#locals-self" } ]
+				},
+				{
+					"name": "meta.crash-info.crashlog",
+					"begin": "<<(Callstack|Plugins|Memory Status)>>",
+					"beginCaptures": { "0": { "name": "entity.name.tag.locals-self.crashlog" } },
+					"end": "<</\\1>>",
+					"endCaptures": { "0": { "name": "entity.name.tag.locals-self.crashlog" } }
+				},
+				{
+					"name": "meta.crash-info.crashlog",
+					"begin": "<<(System Information)>>",
+					"beginCaptures": { "0": { "name": "entity.name.tag.locals-self.crashlog" } },
+					"end": "<</\\1>>",
+					"endCaptures": { "0": { "name": "entity.name.tag.locals-self.crashlog" } },
+					"patterns": [
+						{
+							"begin": "---",
+							"end": "\\n",
+							"name": "comment.category.crashlog"
+						},
+						{
+							"begin": "(?m)^(.*?):",
+							"beginCaptures": {
+								"1": { "name": "variable.parameter.property.crashlog" }
+							},
+							"end": "\\n"
+						}
+					]
+				},
+				{
+					"name": "meta.crash-info.crashlog",
+					"begin": "<<(Crash version|Thread name|Platform|Build identifier|Build type|Product version|Session|Console Log|Crash Dump)>>",
+					"beginCaptures": { "0": { "name": "entity.name.tag.locals-self.crashlog" } },
+					"end": "<</\\1>>",
+					"endCaptures": { "0": { "name": "entity.name.tag.locals-self.crashlog" } },
+					"contentName": "constant.language.crashlog"
+				},
+				{
+					"name": "meta.crash-info.crashlog",
+					"begin": "<<(Script Error)>>",
+					"beginCaptures": { "0": { "name": "entity.name.tag.locals-self.crashlog" } },
+					"end": "<</\\1>>",
+					"endCaptures": { "0": { "name": "entity.name.tag.locals-self.crashlog" } },
+					"contentName": "string.other.error.crashlog"
+				}
+			]
+		},
+		"exception-data": {
+			"patterns": [
+				{
+					"name": "meta.lua-stack.crashlog",
+					"begin": "<Lua Script\\.Callstack>",
+					"beginCaptures": { "0": { "name": "entity.name.tag.callstack.crashlog" } },
+					"end": "</Lua Script\\.Callstack>",
+					"endCaptures": { "0": { "name": "entity.name.tag.callstack.crashlog" } },
+					"patterns": [ { "include": "#callstack" } ]
+				},
+				{
+					"name": "meta.lua-locals.crashlog",
+					"begin": "<Lua (Script\\.)?(Locals|Self)>",
+					"beginCaptures": { "0": { "name": "entity.name.tag.locals-self.crashlog" } },
+					"end": "</Lua \\1\\2>",
+					"endCaptures": { "0": { "name": "entity.name.tag.locals-self.crashlog" } },
+					"patterns": [ { "include": "#locals-self" } ]
+				}
+			]
+		}
+	}
+}
