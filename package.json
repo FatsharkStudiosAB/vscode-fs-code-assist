@@ -12,7 +12,8 @@
 	],
 	"activationEvents": [
 		"onCommand:fatshark-code-assist.stingrayConnect",
-        "onCommand:fatshark-code-assist.stingrayRecompile"
+        "onCommand:fatshark-code-assist.stingrayRecompile",
+		"onCommand:fatshark-code-assist.recompileFile"
 	],
 	"main": "./out/extension.js",
 	"contributes": {
@@ -24,8 +25,38 @@
 			{
 				"command": "fatshark-code-assist.stingrayRecompile",
 				"title": "Stingray Recompile"
+			},
+			{
+				"command": "fatshark-code-assist.executeSelection",
+				"title": "Stingray Execute Selection"
+			},
+			{
+				"command": "fatshark-code-assist.recompileFile",
+				"title": "Stingray Recompile File"
+			},
+			{
+				"command": "fatshark-code-assist.stingrayDisconnect",
+				"title": "Stingray Disconnect"
+			},
+			{
+				"command": "fatshark-code-assist.stingrayCommand",
+				"title": "Stingray Command Fixed"
 			}
 		],
+		"menus": {
+			"editor/context": [
+				{
+                    "command": "fatshark-code-assist.executeSelection",
+                    "group": "z_commands",
+                    "when": "editorHasSelection"
+                }
+			],
+			"commandPalette": [
+				{
+					"command": "fatshark-code-assist.stingrayCommand"
+				}
+			]
+		},
         "configuration": {
             "type": "object",
             "title": "Stingray configuration",
@@ -56,38 +87,40 @@
 				}
             }
 		},
-		"languages": [{
-			"id": "code-output",
-			"mimetypes": [
-				"text/x-code-output"
-			],
-			"configuration": "./language-configuration-crashlog.json"
-		},
-		{
-			"id": "crashlog",
-			"aliases": [
-				"Stingray Crashlog"
-			],
-			"extensions": [
-				".log"
-			],
-			"configuration": "./language-configuration-crashlog.json"
-		}],
-		"grammars": [{
-			"language": "code-output",
-			"scopeName": "source.crashlog",
-			"path": "./syntaxes/crashlog.tmLanguage.json"
-		},
-		{
-			"language": "crashlog",
-			"scopeName": "source.crashlog",
-			"path": "./syntaxes/crashlog.tmLanguage.json"
-		},
-		{
-			"injectTo": ["source.lua"],
-			"scopeName": "fatshark-preprocessor.injection",
-			"path": "./syntaxes/injection.json"
-		}]
+		"languages": [
+			{
+				"id": "code-output",
+				"mimetypes": [
+					"text/x-code-output"
+				],
+				"configuration": "./language-configuration-crashlog.json"
+			},
+			{
+				"id": "crashlog",
+				"aliases": [
+					"Stingray Crashlog"
+				],
+				"extensions": [
+					".log"
+				],
+				"configuration": "./language-configuration-crashlog.json"
+			}],
+			"grammars": [{
+				"language": "code-output",
+				"scopeName": "source.crashlog",
+				"path": "./syntaxes/crashlog.tmLanguage.json"
+			},
+			{
+				"language": "crashlog",
+				"scopeName": "source.crashlog",
+				"path": "./syntaxes/crashlog.tmLanguage.json"
+			},
+			{
+				"injectTo": ["source.lua"],
+				"scopeName": "fatshark-preprocessor.injection",
+				"path": "./syntaxes/injection.json"
+			}
+		]
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
