@@ -13,7 +13,8 @@
 	"activationEvents": [
 		"onCommand:fatshark-code-assist.stingrayConnect",
         "onCommand:fatshark-code-assist.stingrayRecompile",
-		"onCommand:fatshark-code-assist.recompileFile"
+		"onCommand:fatshark-code-assist.recompileFile",
+		"onLanguage:lua"
 	],
 	"main": "./out/extension.js",
 	"contributes": {
@@ -39,11 +40,6 @@
 				"category": "Stingray"
 			},
 			{
-				"command": "fatshark-code-assist.recompileFile",
-				"title": "Recompile File",
-				"category": "Stingray"
-			},
-			{
 				"command": "fatshark-code-assist.stingrayDisconnect",
 				"title": "Disconnect",
 				"category": "Stingray"
@@ -57,15 +53,88 @@
 				"command": "fatshark-code-assist.stingrayLua",
 				"title": "Execute Lua",
 				"category": "Stingray"
+			},
+			{
+				"command": "fatshark-code-assist.stingrayCommandTarget",
+				"title": "Execute Command On Target",
+				"category": "Stingray"
+			},
+			{
+				"command": "fatshark-code-assist.stingrayLuaTarget",
+				"title": "Execute Lua On Target",
+				"category": "Stingray"
+			},
+			{
+				"command": "fatshark-code-assist.selectionTarget",
+				"title": "Execute Selection On Target",
+				"category": "Stingray"
+			},
+			{
+				"command": "fatshark-code-assist.attachDebugger",
+				"title": "Attach Debugger",
+				"category": "Stingray"
 			}
 		],
+		
 		"menus": {
+			"commandPalette": [
+				{
+					"command": "fatshark-code-assist.stingrayCommandTarget",
+					"when": "false"
+				},
+				{
+					"command": "fatshark-code-assist.executeSelection",
+					"when": "false"
+				},
+				{
+					"command": "fatshark-code-assist.stingrayLuaTarget",
+					"when": "false"
+				},
+				{
+					"command": "fatshark-code-assist.selectionTarget",
+					"when": "false"
+				},
+				{
+					"command": "fatshark-code-assist.attachDebugger",
+					"when": "false"
+				}
+			],
 			"editor/context": [
 				{
-                    "command": "fatshark-code-assist.executeSelection",
+					"command": "fatshark-code-assist.executeSelection",
                     "group": "Stingray",
                     "when": "editorHasSelection"
                 }
+			],
+			"view/title": [
+				{
+					"command": "fatshark-code-assist.stingrayConnect",
+					"group": "navigation",
+					"when": "view == fs-code-assist-clients"
+				},
+				{
+					"command": "fatshark-code-assist.stingrayRecompile",
+					"group": "navigation",
+					"when": "view == fs-code-assist-clients"
+				}
+			],
+			"view/item/context": [
+				{
+					"command": "fatshark-code-assist.attachDebugger",
+					"when": "viewItem == connected-client"
+				},
+				{
+					"command": "fatshark-code-assist.stingrayCommandTarget",
+					"when": "viewItem == connected-client"
+				},
+				{
+					"command": "fatshark-code-assist.stingrayLuaTarget",
+					"when": "viewItem == connected-client"
+				},
+				{
+					"command": "fatshark-code-assist.selectionTarget",
+					"when": "viewItem == connected-client"
+				}
 			]
 		},
         "configuration": {
@@ -131,7 +200,24 @@
 				"scopeName": "fatshark-preprocessor.injection",
 				"path": "./syntaxes/injection.json"
 			}
-		]
+		],
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "fs-code-assist",
+					"title": "FS Code Assist",
+					"icon": "resources/fs-code-assist.svg"
+				}
+			]
+		},
+		"views": {
+			"fs-code-assist": [
+				{
+					"id": "fs-code-assist-clients",
+					"name": "Connected Clients"
+				}
+			]
+		}
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",

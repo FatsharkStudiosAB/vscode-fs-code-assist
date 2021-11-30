@@ -1,20 +1,27 @@
+// Handles connections to stingray compile server and game clients.
+// Handles creating and hooking to VS Code Output windows.
+// Handles "Connected Clients" side panel refreshing.
+
 import * as vscode from 'vscode';
+import { ConnectedClientsNodeProvider } from './connected-clients-node-provider';
 import { StingrayConnection } from "./stingray-connection";
+import { getTimestamp } from './utils';
 
 const MAX_CONNECTIONS = 32;
 
 export class ConnectionHandler {
     _compiler?: StingrayConnection;
     _game: Map<number, StingrayConnection>;
+    _connectionOutputs: Map<StingrayConnection, vscode.OutputChannel>;
 
     constructor(){
-        this._game = new Map();
+        this._game = new Map();     
+        this._connectionOutputs = new Map();
     }
 
     closeAll() {
         this._compiler?.close();
         for (let [port, game] of this._game) {
-            console.log(port);
             game.close();
         }
     }
@@ -54,20 +61,27 @@ export class ConnectionHandler {
         return allGameConnections;
     }
 
+    getOutputForConnection(connection:StingrayConnection) {
+        return this._connectionOutputs.get(connection);
+    }
+
     _addOutputChannel(name:string, connection:StingrayConnection) {
         const outputChannel = vscode.window.createOutputChannel(name);
         connection.on("data", (response:any)=>{
             if (response.message) {
-                outputChannel.appendLine(`[${response.level}][${response.system}] ${response.message}`);
+                outputChannel.appendLine(`${getTimestamp()}  [${response.level}][${response.system}] ${response.message}`);
             }
         });
         connection.on("connect", ()=>{
             outputChannel.show();
+            vscode.commands.executeCommand("fatshark-code-assist._refreshConnectedClients");
         });
         connection.on("close", (hadError:boolean)=>{
             outputChannel.hide();
             outputChannel.dispose();
+            vscode.commands.executeCommand("fatshark-code-assist._refreshConnectedClients");
         });
+        this._connectionOutputs.set(connection, outputChannel);
     }
 }
 

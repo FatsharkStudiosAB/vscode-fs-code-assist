@@ -18,5 +18,5 @@ export function getTimestamp() {
 	let mm = date.getMinutes();
 	let ss = date.getSeconds();
 	let ms = date.getMilliseconds();
-	return `${hh}:${mm}:${ss}.${ms}`;
+	return `${hh.toString().padStart(2,"0")}:${mm.toString().padStart(2,"0")}:${ss.toString().padStart(2,"0")}.${ms.toString().padStart(3,"0")}`;
 }

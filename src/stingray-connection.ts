@@ -3,18 +3,21 @@ import * as net from 'net';
 import * as utils from './utils';
 
 type EventType = "close" | "connect" | "data";
+const DEFAULT_IP = '127.0.0.1';
 
 export class StingrayConnection {
     _socket : net.Socket;
     _ready : boolean = false;
     _closed : boolean = false;
     _error : boolean = false;
+    _name : string;
 
     _onCloseCallbacks: ((had_error: boolean) => void)[];
     _onConnectCallbacks: (() => void)[];
     _onDataCallbacks: ((data: any) => void)[];
 
     constructor(port:number, ip?:string) {
+        this._name = `Stingray (${ip||DEFAULT_IP}:${port})`;
         this._onCloseCallbacks = [];
         this._onConnectCallbacks = [];
         this._onDataCallbacks = [];
@@ -80,9 +83,10 @@ export class StingrayConnection {
     isReady() { return this._ready; }
     isClosed() { return this._closed; }
     hadError() { return this._error; }
+    getName() { return this._name; }
 
     _connect(port:number, ip?:string) {
-        this._socket.connect(port, ip || '127.0.0.1');
+        this._socket.connect(port, ip || DEFAULT_IP);
     }
 
     _send(data: any) {
