@@ -1,30 +1,108 @@
 import * as vscode from 'vscode';
 import * as SJSON from 'simplified-json';
 import * as fs from 'fs';
-import { LoggingDebugSession, DebugSession, Breakpoint, Source, OutputEvent, InitializedEvent, StoppedEvent, Thread, BreakpointEvent, StackFrame } from 'vscode-debugadapter';
+import { DebugSession, Breakpoint, Source, OutputEvent, InitializedEvent, StoppedEvent, Thread, BreakpointEvent, StackFrame, Scope, Variable } from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { StingrayConnection } from './stingray-connection';
-import { connectionHandler } from './connection-handler';
 import { join } from 'path';
-import { privateEncrypt } from 'crypto';
 
 interface StingrayBreakpoints {
     [key: string]: number[];
 }
 
+interface StingrayScopeContent {
+    variablesReference: number;
+    frameId: number;
+    scopeId: string;
+    variables: Variable[];
+}
+
+interface StingrayTableValue {
+    type: string;
+    value: string;
+    var_name: string;
+}
+
+class ScopeContent {
+    tableVarName?: string;
+    tablePath?: Array<number>;
+    variables?: Variable[];
+
+    constructor(
+        public variablesReference: number,
+        public frameId: number,
+        public scopeId: string
+    ) {
+        
+    }
+
+    public dataReady () : boolean {
+        return this.variables !== null;
+    }
+
+    public isTable() : boolean {
+        return !!this.tableVarName;
+    }
+
+    public getVariables() : any {
+        if (!this.dataReady()) {
+            throw new Error('Data not ready');
+        }
+
+        return this.variables;
+    }
+
+    public getVariable(name: string) : any {
+        if (!this.dataReady()) {
+            throw new Error('Data not ready');
+        }
+
+        return this.variables?.find((variable: { name: string; }) => variable.name === name);
+    }
+
+    public toString() {
+        let path = this.tablePath ? this.tablePath.join(',') : "";
+        return `Scope[
+            id: ${this.variablesReference},
+            scopeId: ${this.scopeId},
+            tableVarName: ${this.tableVarName},
+            tablePath: ${path}
+        ]`;
+    }
+}
+
 const THREAD_ID = 1;
-class StingrayDebugSession extends LoggingDebugSession {
+const SCOPE_DESCS : { [key:string] : string; } = {
+    local: 'Local',
+    up_values: 'Up Values',
+};
+
+class StingrayDebugSession extends DebugSession {
 
     connection?: StingrayConnection;
     breakpoints: Map<string, DebugProtocol.Breakpoint[]>;
     lastBreakpointId: number;
+    lastVariableReferenceId: number;
     callstack: any | null;
     projectRoot: string;
 
+    /// yarhar
+    private _requestId : number = 1;
+    private _topLevelScopes = new Array<ScopeContent>();
+    private _scopesContent = new Map<number, ScopeContent>();
+    private _variableReferenceId : number = 1;
+    private _requests: Map<number, any> = new Map<number, any>();
+    ///
+
+    allScopesContent = new Map<number, StingrayScopeContent>();
+    // topLevelScopes = new Array<ScopeContent>();
+
     constructor() {
-        super('');
+        super();
         this.breakpoints = new Map<string, DebugProtocol.Breakpoint[]>();
+        this.allScopesContent = new Map<number, StingrayScopeContent>();
         this.lastBreakpointId = 0;
+        this.lastVariableReferenceId = 0;
         this.projectRoot = "d:/vt2/";
     }
 
@@ -109,7 +187,17 @@ class StingrayDebugSession extends LoggingDebugSession {
 
        if (data.type === "lua_debugger"){
             this.log(JSON.stringify(data));
-            if (data.message === 'halted') {
+            if (data.node_index || data.requestId) {
+                this.log("maybe pending");
+
+                let pendingRequest = this._requests.get(data.node_index || data.requestId);
+                if (pendingRequest) {
+                    this.log("resplve pending " + data.node_index || data.requestId);
+
+                    this._requests.delete(data.node_index);
+                    pendingRequest.resolve([data, data]);
+                }
+            } else if (data.message === 'halted') {
                 let line = data.line;
                 let isMapped = data.source[0] === '@';
                 let resourcePath = isMapped ? data.source.slice(1) : data.source;
@@ -229,31 +317,52 @@ class StingrayDebugSession extends LoggingDebugSession {
     //     this.sendResponse(response);
     // }
 
-    protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
-        // if (!this.callstack) {
-        //     return this.sendErrorResponse(response, 1000, "No callstack available");
-        // }
+    // protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments): void {
+    //     if (!this.callstack) {
+    //         return this.sendErrorResponse(response, 1000, "No callstack available");
+    //     }
+        
+    //     const scopes = new Array<Scope>();
+    //     for (const scopeId in SCOPE_DESCS) {
+    //         const scopeName = SCOPE_DESCS[scopeId];
+    //         let scopeContent = this.createScopeContent(args.frameId, scopeId);
+    //         scopeContent.variables = this.translateStingrayVariables(this.callstack[args.frameId][scopeId]);
+    //         scopes.push(new Scope(scopeName, scopeContent.variablesReference, false));
+    //     }
 
-        // const scopeContent = this._scopesContent.get(args.variablesReference);
-        // if (!scopeContent) {
-        //     throw new Error('Unknown variablesReference ' + args.variablesReference);
-        // }
+    //     response.body = { scopes: scopes };
+    //     this.sendResponse(response);
+    // }
 
-        // if (scopeContent.dataReady()) {
-        //     response.body = {
-        //         variables: scopeContent.getVariables()
-        //     };
-        //     return this.sendResponse(response);
-        // }
+    // protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
+    //     if (!this.callstack) {
+    //         return this.sendErrorResponse(response, 1000, "No callstack available");
+    //     }
 
-        // this.fetchScopeData(scopeContent).then(() => {
-        //     response.body = {
-        //         variables: scopeContent.getVariables()
-        //     };
-        //     this.sendResponse(response);
-        // });
-        this.sendResponse(response);
-    }
+    //     const scopeContent = this.getScopeContent(args.variablesReference);
+    //     if (!scopeContent) {
+    //         throw new Error('Unknown variablesReference ' + args.variablesReference);
+    //     }
+
+    //     // if (scopeContent.dataReady()) {
+    //     //     response.body = {
+    //     //         variables: scopeContent.getVariables()
+    //     //     };
+    //     //     return this.sendResponse(response);
+    //     // }
+
+    //     // this.fetchScopeData(scopeContent).then(() => {
+    //     //     response.body = {
+    //     //         variables: scopeContent.getVariables()
+    //     //     };
+    //     //     this.sendResponse(response);
+    //     // });
+
+    //     response.body = {
+    //         variables : scopeContent.variables,
+    //     };
+    //     this.sendResponse(response);
+    // }
 
     // protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
     //     this.sendResponse(response);
@@ -296,6 +405,247 @@ class StingrayDebugSession extends LoggingDebugSession {
         
         return join(this.projectRoot, resourcePath);
     }
+
+    // private createScopeContent (frameId : number, scopeId : string) : any {
+    //     let scopeContent = {
+    //         variablesReference: this.lastVariableReferenceId,
+    //         frameId: frameId,
+    //         scopeId: scopeId,
+    //         variables: [],
+    //     };
+    //     this.allScopesContent.set(scopeContent.variablesReference, scopeContent);
+    //     this.lastVariableReferenceId += 1;
+
+    //     return scopeContent;
+    // }
+
+    // private getScopeContent(variablesReferenceId: number) : StingrayScopeContent | undefined {
+    //     return this.allScopesContent.get(variablesReferenceId);
+    // }
+
+    // private translateStingrayVariables(stingrayVariables:StingrayTableValue[]) : Variable[] {
+    //     let variables: Variable[] = [];
+
+    //     stingrayVariables.forEach(stingrayValue => {
+    //         if (stingrayValue.var_name !== "(*temporary)") {
+    //             if (stingrayValue.type === 'table') {
+    //                 let tableItems = stingrayValue.value.split('\n');
+    //                 let tableScopeContent = this.createScopeContent(scope.frameId, scope.scopeId);
+
+    //                 variables.push({
+    //                     name: stingrayValue.var_name,
+    //                     value: "{table}",
+    //                     variablesReference: 0,
+    //                 });
+    //             } else {
+    //                 variables.push({
+    //                     name: stingrayValue.var_name,
+    //                     value: stingrayValue.value,
+    //                     variablesReference: 0,
+    //                 });
+    //             }
+    //         }
+    //     });
+
+
+    //     return variables;
+    // }
+
+    //////////////// YARHAR
+    protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
+        if (!this.callstack) {
+            return this.sendErrorResponse(response, 1000, "No callstack available");
+        }
+
+        const scopeContent = this._scopesContent.get(args.variablesReference);
+        if (!scopeContent) {
+            throw new Error('Unknown variablesReference ' + args.variablesReference);
+        }
+
+        if (scopeContent.dataReady()) {
+            response.body = {
+                variables: scopeContent.getVariables()
+            };
+            return this.sendResponse(response);
+        }
+
+        this.fetchScopeData(scopeContent).then(() => {
+            response.body = {
+                variables: scopeContent.getVariables()
+            };
+            this.sendResponse(response);
+        });
+    }
+
+    protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments): void {
+        if (!this.callstack) {
+            return this.sendErrorResponse(response, 1000, "No callstack available");
+        }
+
+        const scopes = new Array<Scope>();
+
+        for (const scopeId in SCOPE_DESCS) {
+            const scopeDisplayName = SCOPE_DESCS[scopeId];
+            const scopeContent = this.createScopeContent(args.frameId, scopeId);
+            this.populateVariables(scopeContent, this.callstack[args.frameId][scopeId]);
+            this._topLevelScopes.push(scopeContent);
+            scopes.push(new Scope(scopeDisplayName, scopeContent.variablesReference, false));
+        }
+
+        response.body = { scopes: scopes };
+        this.sendResponse(response);
+    }
+
+    private createScopeContent (frameId : number, scopeId : string) : ScopeContent {
+        let scopeContent = new ScopeContent(
+            this._variableReferenceId,
+            frameId,
+            scopeId
+        );
+        this._scopesContent.set(scopeContent.variablesReference, scopeContent);
+        this._variableReferenceId += 1;
+        return scopeContent;
+    }
+    private populateVariables(scope: ScopeContent, stingrayTableValues: Array<any>) : void {
+        const variables = [];
+        let duplicatesCounter = 0;
+        for (let i = 0; i < stingrayTableValues.length; ++i) {
+            let tableValue = stingrayTableValues[i];
+            let varName = tableValue.var_name || tableValue.key;
+            if (varName === "(*temporary)") {
+                continue;
+            }
+            if (tableValue.value === "C function") {
+                continue;
+            }
+
+            // Add (n) at the end of a element in the table if one with the same name is already inserted
+            if(tableValue.key){
+                variables.forEach(element => {
+                    if(element.name === tableValue.key){
+                        varName = varName + "(" + ++duplicatesCounter + ")";
+                    }
+                });
+            }
+            let displayName = tableValue.key;
+            let value = tableValue.value;
+            let type = tableValue.type;
+            if (tableValue.type === 'table') {
+                let tableItems = value.split('\n');
+                let tableScopeContent = this.createScopeContent(scope.frameId, scope.scopeId);
+                tableScopeContent.tableVarName = scope.tableVarName || varName;
+                if (!scope.tablePath) {
+                    tableScopeContent.tablePath = [];
+                } else {
+                    tableScopeContent.tablePath = scope.tablePath.concat([i + 1]);
+                }
+
+                variables.push({
+                    name: varName,
+                    type: type,
+                    value: "{table}",
+                    namedVariables: tableItems.length,
+                    variablesReference: tableScopeContent.variablesReference,
+                    tableIndex: i
+                });
+
+            } else if (tableValue.type === 'userdata') {
+                let _value = tableValue.value;
+                // if (_value.includes("#ID"))
+                // {
+                //     _value = this.translateVariableIdSring(_value);
+                // }
+
+                variables.push({
+                    name: varName,
+                    type: type,
+                    value: _value,
+                    variablesReference: 0,
+                    tableIndex: i
+                });
+            }else {
+                variables.push({
+                    name: varName,
+                    type: type,
+                    value: value,
+                    variablesReference: 0,
+                    tableIndex: i
+                });
+            }
+        }
+        scope.variables = variables;
+    }
+
+    private fetchScopeData(scopeContent: ScopeContent) : Promise<any> {
+        this.log("Fetch data");
+        if (scopeContent.dataReady()) {
+            return Promise.resolve(scopeContent);
+        }
+
+        return this.sendDebuggerRequest('expand_table', {
+            local_num: 0,
+            table_path: {
+                level: scopeContent.frameId,
+                local: scopeContent.tableVarName,
+                path: scopeContent.tablePath
+            }
+        }, 'node_index').then(result => {
+            let message = result[0];
+            let tableValues = message.table !== 'nil' ? message.table : [];
+            this.populateVariables(scopeContent, tableValues);
+        });
+    }
+
+    private setupRequest() : any {
+        let request = {resolve: <any>null, reject: <any>null};
+        let requestId = this._requestId++;
+        this._requests.set(requestId, request);
+        let p = new Promise<any>((resolve, reject) => {
+            request.resolve = resolve;
+            request.reject = reject;
+        });
+
+        return {promise: p, id: requestId};
+    }
+
+    private sendDebuggerRequest (command: string, data : any, requestIdName: string = 'requestId') : Promise<any> {
+        let request = this.setupRequest();
+
+        data = data || {};
+        data[requestIdName] = request.id;
+
+        this.log("command requested " + request.id + " " +command);
+        this.connection?.sendDebuggerCommand(command, data);
+
+        return request.promise;
+    }
 }
+//     private getScopeVariables(stingrayScopeContent: StingrayScopeContent) : Variable[] {
+//         interface Variable {
+//             /** The variable's name. */
+//             name: string;
+//             /** The variable's value. This can be a multi-line text, e.g. for a function the body of a function. */
+//             value: string;
+//             /** The type of the variable's value. Typically shown in the UI when hovering over the value. */
+//             type?: string;
+//             /** Properties of a variable that can be used to determine how to render the variable in the UI. */
+//             presentationHint?: VariablePresentationHint;
+//             /** Optional evaluatable name of this variable which can be passed to the 'EvaluateRequest' to fetch the variable's value. */
+//             evaluateName?: string;
+//             /** If variablesReference is > 0, the variable is structured and its children can be retrieved by passing variablesReference to the VariablesRequest. */
+//             variablesReference: number;
+//             /** The number of named child variables.
+//                 The client can use this optional information to present the children in a paged UI and fetch them in chunks.
+//             */
+//             namedVariables?: number;
+//             /** The number of indexed child variables.
+//                 The client can use this optional information to present the children in a paged UI and fetch them in chunks.
+//             */
+//             indexedVariables?: number;
+//         }
+//         let variables = [];
+        
+//     }
+// }
 
 DebugSession.run(StingrayDebugSession);
