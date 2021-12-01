@@ -1,0 +1,473 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>fileTypes</key>
+	<array>
+		<string>sjson</string>
+		<string>material</string>
+		<string>shader</string>
+		<string>shader_node</string>
+		<string>shader_source</string>
+		<string>render_config</string>
+		<string>particles</string>
+		<string>bsi</string>
+		<string>texture</string>
+		<string>unit</string>
+		<string>physics</string>
+		<string>landscape</string>
+		<string>level</string>
+		<string>timpani_bank</string>
+		<string>timpani_master</string>
+		<string>mouse_cursor</string>
+		<string>surface_properties</string>
+		<string>physics_properties</string>
+		<string>decals</string>
+		<string>script_flow_nodes</string>
+		<string>flow</string>
+		<string>network_config</string>
+		<string>strings</string>
+		<string>volume_type</string>
+		<string>package</string>
+		<string>sound_environment</string>
+		<string>texture_category</string>
+		<string>shading_environment_template</string>
+		<string>shading_environment</string>
+	</array>
+	<key>foldingStartMarker</key>
+	<string>(?x:       # turn on extended mode
+                          ^        # a line beginning with
+                          \s*      # some optional space
+                          [{\[]    # the start of an object or array
+                          (?!      # but not followed by
+                            .*     # whatever
+                            [}\]]  # and the close of an object or array
+                            ,?     # an optional comma
+                            \s*    # some optional space
+                            $      # at the end of the line
+                          )
+                          |        # ...or...
+                          [{\[]    # the start of an object or array
+                          \s*      # some optional space
+                          $        # at the end of the line
+                        )</string>
+	<key>foldingStopMarker</key>
+	<string>(?x:     # turn on extended mode
+                         ^      # a line beginning with
+                         \s*    # some optional space
+                         [}\]]  # and the close of an object or array
+                       )</string>
+	<key>keyEquivalent</key>
+	<string>^~J</string>
+	<key>name</key>
+	<string>SJSON</string>
+	<key>patterns</key>
+	<array>
+		<dict>
+			<key>include</key>
+			<string>#value</string>
+		</dict>
+		<dict>
+			<key>include</key>
+			<string>#dictionary</string>
+		</dict>
+	</array>
+	<key>repository</key>
+	<dict>
+		<key>array</key>
+		<dict>
+			<key>begin</key>
+			<string>\[</string>
+			<key>beginCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.array.begin.sjson</string>
+				</dict>
+			</dict>
+			<key>end</key>
+			<string>\]</string>
+			<key>endCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.array.end.sjson</string>
+				</dict>
+			</dict>
+			<key>name</key>
+			<string>meta.structure.array.sjson</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#value</string>
+				</dict>
+				<dict>
+					<key>match</key>
+					<string>[, ]</string>
+					<key>name</key>
+					<string>punctuation.separator.array.sjson</string>
+				</dict>
+				<dict>
+					<key>match</key>
+					<string>[^\s\]]</string>
+					<key>name</key>
+					<string>invalid.illegal.expected-array-separator.sjson</string>
+				</dict>
+			</array>
+		</dict>
+		<key>comments</key>
+		<dict>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>begin</key>
+					<string>/\*\*</string>
+					<key>captures</key>
+					<dict>
+						<key>0</key>
+						<dict>
+							<key>name</key>
+							<string>punctuation.definition.comment.sjson</string>
+						</dict>
+					</dict>
+					<key>end</key>
+					<string>\*/</string>
+					<key>name</key>
+					<string>comment.block.documentation.sjson</string>
+				</dict>
+				<dict>
+					<key>begin</key>
+					<string>/\*</string>
+					<key>captures</key>
+					<dict>
+						<key>0</key>
+						<dict>
+							<key>name</key>
+							<string>punctuation.definition.comment.sjson</string>
+						</dict>
+					</dict>
+					<key>end</key>
+					<string>\*/</string>
+					<key>name</key>
+					<string>comment.block.sjson</string>
+				</dict>
+				<dict>
+					<key>captures</key>
+					<dict>
+						<key>1</key>
+						<dict>
+							<key>name</key>
+							<string>punctuation.definition.comment.sjson</string>
+						</dict>
+					</dict>
+					<key>match</key>
+					<string>(//).*$\n?</string>
+					<key>name</key>
+					<string>comment.line.double-slash.js</string>
+				</dict>
+			</array>
+		</dict>
+		<key>constant</key>
+		<dict>
+			<key>match</key>
+			<string>\b(?:true|false|null|nil)\b</string>
+			<key>name</key>
+			<string>constant.language.sjson</string>
+		</dict>
+		<key>dictionary</key>
+		<dict>
+			<key>name</key>
+			<string>meta.structure.dictionary.sjson</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#identifier</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#comments</string>
+				</dict>
+				<dict>
+					<key>begin</key>
+					<string>([:=])\s*</string>
+					<key>beginCaptures</key>
+					<dict>
+						<key>1</key>
+						<dict>
+							<key>name</key>
+							<string>punctuation.separator.dictionary.key-value.sjson</string>
+						</dict>
+					</dict>
+					<key>end</key>
+					<string>([,\s])|(?=\})</string>
+					<key>endCaptures</key>
+					<dict>
+						<key>1</key>
+						<dict>
+							<key>name</key>
+							<string>punctuation.separator.dictionary.pair.sjson</string>
+						</dict>
+					</dict>
+					<key>name</key>
+					<string>meta.structure.dictionary.value.sjson</string>
+					<key>patterns</key>
+					<array>
+						<dict>
+							<key>comment</key>
+							<string>the.sjson object value</string>
+							<key>include</key>
+							<string>#value</string>
+						</dict>
+						<dict>
+							<key>match</key>
+							<string>[^\s,]</string>
+							<key>name</key>
+							<string>invalid.illegal.expected-dictionary-separator.sjson</string>
+						</dict>
+					</array>
+				</dict>
+				<dict>
+					<key>match</key>
+					<string>[^\s\}]</string>
+					<key>name</key>
+					<string>invalid.illegal.expected-dictionary-separator.sjson</string>
+				</dict>
+			</array>
+		</dict>
+		<key>double_quoted_string</key>
+		<dict>
+			<key>begin</key>
+			<string>"</string>
+			<key>beginCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.string.begin.sjson</string>
+				</dict>
+			</dict>
+			<key>end</key>
+			<string>"</string>
+			<key>endCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.string.end.sjson</string>
+				</dict>
+			</dict>
+			<key>name</key>
+			<string>string.quoted.double.sjson</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>match</key>
+					<string>(?x:                # turn on extended mode
+                     \\                # a literal backslash
+                     (?:               # ...followed by...
+                       ["\\/bfnrt]     # one of these characters
+                       |               # ...or...
+                       u               # a u
+                       [0-9a-fA-F]{4}  # and four hex digits
+                     )
+                   )</string>
+					<key>name</key>
+					<string>constant.character.escape.sjson</string>
+				</dict>
+				<dict>
+					<key>match</key>
+					<string>\\.</string>
+					<key>name</key>
+					<string>invalid.illegal.unrecognized-string-escape.sjson</string>
+				</dict>
+			</array>
+		</dict>
+		<key>identifier</key>
+		<dict>
+			<key>name</key>
+			<string>keyword.source.identifier.sjson</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#string</string>
+					<key>name</key>
+					<string>identifier.sjson</string>
+				</dict>
+				<dict>
+					<key>match</key>
+					<string>\w+</string>
+					<key>name</key>
+					<string>identifier.sjson</string>
+				</dict>
+			</array>
+		</dict>
+		<key>number</key>
+		<dict>
+			<key>comment</key>
+			<string>handles integer and decimal numbers</string>
+			<key>match</key>
+			<string>(?x:         # turn on extended mode
+			             -?         # an optional minus
+			             (?:
+			               0        # a zero
+			               |        # ...or...
+			               [1-9]    # a 1-9 character
+			               \d*      # followed by zero or more digits
+			             )
+			             (?:
+			               (?:
+			                 \.     # a period
+			                 \d+    # followed by one or more digits
+			               )?
+			               (?:
+			                 [eE]   # an e character
+			                 [+-]?  # followed by an option +/-
+			                 \d+    # followed by one or more digits
+			               )?       # make exponent optional
+			             )?         # make decimal portion optional
+			           )</string>
+			<key>name</key>
+			<string>constant.numeric.sjson</string>
+		</dict>
+		<key>object</key>
+		<dict>
+			<key>begin</key>
+			<string>\{</string>
+			<key>beginCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.dictionary.begin.sjson</string>
+				</dict>
+			</dict>
+			<key>comment</key>
+			<string>an SJSON object</string>
+			<key>end</key>
+			<string>\}</string>
+			<key>endCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.dictionary.end.sjson</string>
+				</dict>
+			</dict>
+			<key>name</key>
+			<string>meta.structure.dictionary.sjson</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#dictionary</string>
+				</dict>
+			</array>
+		</dict>
+		<key>string</key>
+		<dict>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#triple_quoted_string</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#double_quoted_string</string>
+				</dict>
+			</array>
+		</dict>
+		<key>triple_quoted_string</key>
+		<dict>
+			<key>begin</key>
+			<string>"""</string>
+			<key>beginCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.string.begin.sjson</string>
+				</dict>
+			</dict>
+			<key>end</key>
+			<string>"""</string>
+			<key>endCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.string.end.sjson</string>
+				</dict>
+			</dict>
+			<key>name</key>
+			<string>text.plain.sjson</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>match</key>
+					<string>(?x:                # turn on extended mode
+                     \\                # a literal backslash
+                     (?:               # ...followed by...
+                       [\\/bfnrt]     # one of these characters
+                       |               # ...or...
+                       u               # a u
+                       [0-9a-fA-F]{4}  # and four hex digits
+                     )
+                   )</string>
+					<key>name</key>
+					<string>constant.character.escape.sjson</string>
+				</dict>
+				<dict>
+					<key>match</key>
+					<string>\\.</string>
+					<key>name</key>
+					<string>invalid.illegal.unrecognized-string-escape.sjson</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>source.hlsl</string>
+				</dict>
+			</array>
+		</dict>
+		<key>value</key>
+		<dict>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#constant</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#number</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#string</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#array</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#object</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#comments</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+	<key>scopeName</key>
+	<string>source.sjson</string>
+	<key>uuid</key>
+	<string>987f6609-b91c-4bd4-a5ba-13e3019d9068</string>
+</dict>
+</plist>

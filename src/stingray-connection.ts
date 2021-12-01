@@ -69,6 +69,13 @@ export class StingrayConnection {
         return guid;
     }
 
+    sendDebuggerCommand(command: string, data?:any) {
+        this._send(Object.assign({
+            type: "lua_debugger",
+            command: command
+        }, data));
+    }
+
     sendJSON(object:any) {
         this._send(object);
     }

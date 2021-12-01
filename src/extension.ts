@@ -119,25 +119,18 @@ export function activate(context: vscode.ExtensionContext) {
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.attachDebugger', () => {
-		let config = {
-			// Use IntelliSense to learn about possible attributes.
-			// Hover to view descriptions of existing attributes.
-			// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
-			"version": "0.2.0",
-			"configurations": [
-				{
-					"type": "stingray",
-					"request": "attach",
-					"name": "Vermintide 2",
-					"toolchain": "Vermintide2 (trunk)",
-					"engine_exe": "stingray_win64_dev_x64.exe",
-					"port": 14000,
-					"compile": true,
-					"command_line_args": []
-				},
-			]
+		let test = {
+			"type": "stingray_lua",
+			"request": "attach",
+			"name": "Vermintide 2",
+			"toolchain": "Vermintide2 (trunk)",
+			"engine_exe": "stingray_win64_dev_x64.exe",
 		};
-		vscode.commands.executeCommand('vscode.startDebug', config);
+		let folder = vscode.workspace.workspaceFolders;
+		if (folder) {
+			//console.log(folder, folder[0]);
+			vscode.debug.startDebugging(folder[0], test );
+		}
 	}));
 
 	// Connected clients panel
