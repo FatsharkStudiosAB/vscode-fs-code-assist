@@ -78,9 +78,12 @@ export class ConnectionHandler {
 			//outputChannel.dispose();
 			vscode.commands.executeCommand("fatshark-code-assist._refreshConnectedClients");
 		});
-		connection.onDidReceiveData.add((response:any) => {
-			if (response.message) {
-				outputChannel.appendLine(`${getTimestamp()}  [${response.level}][${response.system}] ${response.message}`);
+		connection.onDidReceiveData.add((data:any) => {
+			if (data.type === "message") {
+				outputChannel.appendLine(`${getTimestamp()}  [${data.level}][${data.system}] ${data.message}`);
+			}
+			if (data.message_type === "lua_error") { // If it is an error, print extra diagnostics.
+				outputChannel.appendLine(data.lua_callstack);
 			}
 		});
 	}

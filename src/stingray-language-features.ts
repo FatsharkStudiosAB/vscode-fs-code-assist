@@ -1,4 +1,4 @@
-import { Color, ColorInformation, ColorPresentation, Disposable, DocumentSymbol, FoldingRange, FoldingRangeKind, languages, Range, SemanticTokensBuilder, SymbolKind } from "vscode";
+import { Color, ColorInformation, ColorPresentation, Disposable, DocumentLink, DocumentSymbol, FoldingRange, FoldingRangeKind, languages, Range, SemanticTokensBuilder, SymbolKind, Uri } from "vscode";
 
 const LANGUAGE_SELECTOR = "lua";
 
@@ -146,6 +146,29 @@ export function activate() {
 			}
 
 			return colors;
+		}
+	});
+
+	const LINK_REGEX = /@?([\w_/]+\.lua)(?::(\d+))?/d;
+	languages.registerDocumentLinkProvider("stingray-output", {
+		provideDocumentLinks(document, token) {
+			const links = [];
+
+			for (let i=0; i < document.lineCount; ++i) {
+				const line = document.lineAt(i);
+				const text = line.text;
+
+				const linkMatches = LINK_REGEX.exec(text);
+				if (linkMatches) {
+					const indices = (<any> linkMatches).indices;
+					const range = new Range(i, indices[0][0], i, indices[0][1]);
+					const line = linkMatches[2] ? parseInt(linkMatches[2], 10) : 1;
+					const uri = Uri.parse(`vscode://file/d:/vt2/${linkMatches[1]}:${line}:1`);
+					links.push(new DocumentLink(range, uri));
+				}
+			}
+
+			return links;
 		}
 	});
 

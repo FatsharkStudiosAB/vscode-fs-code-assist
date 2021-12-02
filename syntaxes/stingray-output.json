@@ -57,6 +57,10 @@
 					]
 				},
 				{
+					"match": "\\b\\w+/[\\w/]+\\.lua(?::\\d+)\\b",
+					"name": "entity.name.filename.resource-path.stingray-output"
+				},
+				{
 					"match": "\\b\\w+/[\\w/]+\\b",
 					"name": "string.other.resource-path.stingray-output"
 				},
