@@ -1,0 +1,74 @@
+{
+	"name": "Stingray Output",
+	"scopeName": "source.stingray-output",
+	"patterns": [
+		{
+			"name": "comment",
+			"match": "(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})"
+		},
+		{
+			"name": "token.error-token.stingray-output",
+			"match": "\\[error\\]"
+		},
+		{
+			"name": "token.warn-token.stingray-output",
+			"match": "\\[warning\\]"
+		},
+		{
+			"name": "token.info-token.stingray-output",
+			"match": "\\[info\\]"
+		},
+		{
+			"include": "#lua-values"
+		}
+	],
+	"repository": {
+		"lua-values": {
+			"patterns": [
+				{
+					"match": "\\b(?:false|nil|true)\\b",
+					"name": "constant.language.stingray-output"
+				},
+				{
+					"match": "(table): \\h{16}",
+					"captures": {
+						"1": {
+							"name": "storage.type.table.stingray-output"
+						}
+					}
+				},
+				{
+					"match": "\\[(function|World|Unit|unknown)\\]",
+					"name": "entity.name.function.stingray-output"
+				},
+				{
+					"match": "\\b\\-?\\d+(?:\\.\\d+)?\\b(?!:)",
+					"name": "constant.numeric.stingray-output"
+				},
+				{
+					"begin": "\"|`",
+					"end": "\\0",
+					"name": "string.single-line.stingray-output",
+					"patterns": [
+						{
+							"match": "\\\\[abfnrtvz\\\\\"'\\n]",
+							"name": "constant.character.escape.stingray-output"
+						}
+					]
+				},
+				{
+					"match": "\\b\\w+/[\\w/]+\\b",
+					"name": "string.other.resource-path.stingray-output"
+				},
+				{
+					"match": "\\b[;=]\\b",
+					"name": "keyword.language.punctuation.stingray-output"
+				},
+				{
+					"match": "\\b[0-9a-f]{15}\\b",
+					"name": "storage.type.steamid.stingray-output"
+				}
+			]
+		}
+	}
+}
