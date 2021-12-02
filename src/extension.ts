@@ -14,25 +14,8 @@ export function activate(context: vscode.ExtensionContext) {
 			location: vscode.ProgressLocation.Notification
 		}, (progress, token) => new Promise<void>((resolve, reject) => {
 			const id = uuid4();
-			const config = vscode.workspace.getConfiguration("stingray");
-			const enginePath = config.get("engine_path");
-			const sourceDir = config.get("source_dir");
-			const dataDir = config.get("data_dir");
-			const platform = config.get("platform");
-			var cmd = {
-				"id": id,
-				"type" : "compile",
-				"source-directory" : sourceDir,
-				"source-directory-maps" : [
-					{ "directory" : "core", "root" : enginePath }
-				],
-				"data-directory" : dataDir,
-				"platform" : platform,
-			};
-
-			progress.report({ increment: 0, message: "Stingray Compile: Starting..." });
-
 			let status = 0;
+
 			const compiler = connectionHandler.getCompiler();
 			compiler.onDidReceiveData.add(function onData(data: any) {
 				if (data.id === id && data.finished) {
@@ -54,7 +37,27 @@ export function activate(context: vscode.ExtensionContext) {
 					status = newStatus;
 				}
 			});
-			compiler.sendJSON(cmd);
+
+			token.onCancellationRequested(() => {
+				compiler.sendJSON({
+					"id": id,
+					"type" : "cancel",
+				});
+			});
+
+			progress.report({ increment: 0, message: "Stingray Compile: Starting..." });
+
+			const config = vscode.workspace.getConfiguration("stingray");
+			compiler.sendJSON({
+				"id": id,
+				"type" : "compile",
+				"source-directory" : config.get("source_dir"),
+				"source-directory-maps" : [
+					{ "directory" : "core", "root" : config.get("engine_path") }
+				],
+				"data-directory" : config.get("data_dir"),
+				"platform" :  config.get("platform"),
+			});
 		}));
 	}));
 
