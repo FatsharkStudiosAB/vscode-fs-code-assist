@@ -162,11 +162,10 @@
     },
     "languages": [
       {
-        "id": "code-output",
+        "id": "stingray-output",
         "mimetypes": [
           "text/x-code-output"
-        ],
-        "configuration": "./language-configuration-crashlog.json"
+        ]
       },
       {
         "id": "crashlog",
@@ -236,9 +235,9 @@
     ],
     "grammars": [
       {
-        "language": "code-output",
-        "scopeName": "source.crashlog",
-        "path": "./syntaxes/crashlog.tmLanguage.json"
+        "language": "stingray-output",
+        "scopeName": "source.stingray-output",
+        "path": "./syntaxes/stingray-output.json"
       },
       {
         "language": "crashlog",

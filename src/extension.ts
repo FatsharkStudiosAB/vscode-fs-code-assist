@@ -29,25 +29,10 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
-			let currentTCSettings = getCurrentToolchainSettings(tcPath);
-			const enginePath = getToolchainPath(toolchain).replace(/\\/g, '/');
-			const sourceDir = currentTCSettings.SourceDirectory.replace(/\\/g, '/');
-			const dataDir = currentTCSettings.DataDirectoryBase.replace(/\\/g, '/');
-
-			var cmd = {
-				"id": id,
-				"type" : "compile",
-				"source-directory" : sourceDir,
-				"source-directory-maps" : [
-					{ "directory" : "core", "root" : enginePath }
-				],
-				"data-directory" : dataDir,
-				"platform" : platform,
-			};
-
 			progress.report({ increment: 0, message: "Stingray Compile: Starting..." });
 
 			let status = 0;
+
 			const compiler = connectionHandler.getCompiler();
 			compiler.onDidReceiveData.add(function onData(data: any) {
 				if (data.id === id && data.finished) {
@@ -69,7 +54,30 @@ export function activate(context: vscode.ExtensionContext) {
 					status = newStatus;
 				}
 			});
-			compiler.sendJSON(cmd);
+
+			token.onCancellationRequested(() => {
+				compiler.sendJSON({
+					"id": id,
+					"type" : "cancel",
+				});
+			});
+
+			progress.report({ increment: 0, message: "Stingray Compile: Starting..." });
+
+			let currentTCSettings = getCurrentToolchainSettings(tcPath);
+			const enginePath = getToolchainPath(toolchain).replace(/\\/g, '/');
+			const sourceDir = currentTCSettings.SourceDirectory.replace(/\\/g, '/');
+			const dataDir = currentTCSettings.DataDirectoryBase.replace(/\\/g, '/');
+			compiler.sendJSON({
+				"id": id,
+				"type" : "compile",
+				"source-directory" : sourceDir,
+				"source-directory-maps" : [
+					{ "directory" : "core", "root" : enginePath }
+				],
+				"data-directory" : dataDir,
+				"platform" : platform,
+			});
 		}));
 	}));
 
