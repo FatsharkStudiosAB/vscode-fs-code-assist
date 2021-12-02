@@ -1,6 +1,3 @@
-import * as vscode from 'vscode';
-import * as SJSON from 'simplified-json';
-import * as fs from 'fs';
 import { DebugSession, Breakpoint, Source, OutputEvent, InitializedEvent, StoppedEvent, Thread, BreakpointEvent, StackFrame, Scope, Variable } from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { StingrayConnection } from './stingray-connection';
@@ -21,54 +18,19 @@ interface StingrayTableValue {
     type: string;
     value: string;
     var_name: string;
+    key?: string;
 }
 
-class ScopeContent {
-    tableVarName?: string;
-    tablePath?: Array<number>;
-    variables?: Variable[];
+interface StingrayTableContext {
+    frameId: number,
+    varName: string,
+    varIndex: number,
+    parentRefId: number
+}
 
-    constructor(
-        public variablesReference: number,
-        public frameId: number,
-        public scopeId: string
-    ) {
-        
-    }
-
-    public dataReady () : boolean {
-        return this.variables !== null;
-    }
-
-    public isTable() : boolean {
-        return !!this.tableVarName;
-    }
-
-    public getVariables() : any {
-        if (!this.dataReady()) {
-            throw new Error('Data not ready');
-        }
-
-        return this.variables;
-    }
-
-    public getVariable(name: string) : any {
-        if (!this.dataReady()) {
-            throw new Error('Data not ready');
-        }
-
-        return this.variables?.find((variable: { name: string; }) => variable.name === name);
-    }
-
-    public toString() {
-        let path = this.tablePath ? this.tablePath.join(',') : "";
-        return `Scope[
-            id: ${this.variablesReference},
-            scopeId: ${this.scopeId},
-            tableVarName: ${this.tableVarName},
-            tablePath: ${path}
-        ]`;
-    }
+interface StingrayCommandRequset {
+    id: number,
+    promise: Promise<any>
 }
 
 const THREAD_ID = 1;
@@ -83,42 +45,36 @@ class StingrayDebugSession extends DebugSession {
     breakpoints: Map<string, DebugProtocol.Breakpoint[]>;
     lastBreakpointId: number;
     lastVariableReferenceId: number;
+    lastCommandRequestId: number;
+    variableRefMap: Map<number, Variable[]>;
+    tableContextMap: Map<number,StingrayTableContext>;
+    commandRequests: Map<number, any>;
+
     callstack: any | null;
     projectRoot: string;
-
-    /// yarhar
-    private _requestId : number = 1;
-    private _topLevelScopes = new Array<ScopeContent>();
-    private _scopesContent = new Map<number, ScopeContent>();
-    private _variableReferenceId : number = 1;
-    private _requests: Map<number, any> = new Map<number, any>();
-    ///
-
-    allScopesContent = new Map<number, StingrayScopeContent>();
-    // topLevelScopes = new Array<ScopeContent>();
 
     constructor() {
         super();
         this.breakpoints = new Map<string, DebugProtocol.Breakpoint[]>();
-        this.allScopesContent = new Map<number, StingrayScopeContent>();
+        this.variableRefMap = new Map<number, Variable[]>();
+        this.tableContextMap = new Map<number, StingrayTableContext>();
+        this.commandRequests = new Map<number, any>();
+
         this.lastBreakpointId = 0;
         this.lastVariableReferenceId = 0;
+        this.lastCommandRequestId = 0;
         this.projectRoot = "d:/vt2/";
     }
 
-    /**
-     * The 'initialize' request is the first request called by the frontend
-     * to interrogate the features the debug adapter provides.
-     */
     protected initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
         // Set supported features
         if (!response.body) {
             return;
         }
 
-        response.body.supportsEvaluateForHovers = false;
-        response.body.supportsConfigurationDoneRequest = false;
-        response.body.supportsRestartRequest = false;
+        response.body.supportsEvaluateForHovers = true;
+        response.body.supportsConfigurationDoneRequest = true;
+        response.body.supportsRestartRequest = true;
         response.body.supportsSetVariable = false;
         response.body.exceptionBreakpointFilters = [
             {
@@ -131,9 +87,10 @@ class StingrayDebugSession extends DebugSession {
         this.sendResponse(response);
     }
 
-    /**
-     * Attach to the engine console server using web sockets.
-     */
+    protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
+        this.sendResponse(response);
+    }
+
     protected attachRequest(response: DebugProtocol.AttachResponse, args:any): void {
         this.connection = new StingrayConnection(14000);
         
@@ -176,28 +133,9 @@ class StingrayDebugSession extends DebugSession {
     }
 
     protected onStingrayMessage(data:any) {
-        // if (e.requestId) {
-        //     let pendingRequest = this._requests.get(e.requestId);
-        //     if (pendingRequest) {
-        //         this._requests.delete(e.node_index);
-        //         pendingRequest.resolve([e, data]);
-        //         return;
-        //     }
-        // }
-
        if (data.type === "lua_debugger"){
             this.log(JSON.stringify(data));
-            if (data.node_index || data.requestId) {
-                this.log("maybe pending");
-
-                let pendingRequest = this._requests.get(data.node_index || data.requestId);
-                if (pendingRequest) {
-                    this.log("resplve pending " + data.node_index || data.requestId);
-
-                    this._requests.delete(data.node_index);
-                    pendingRequest.resolve([data, data]);
-                }
-            } else if (data.message === 'halted') {
+            if (data.message === 'halted') {
                 let line = data.line;
                 let isMapped = data.source[0] === '@';
                 let resourcePath = isMapped ? data.source.slice(1) : data.source;
@@ -216,6 +154,29 @@ class StingrayDebugSession extends DebugSession {
                 this.sendEvent(new StoppedEvent(haltReason, THREAD_ID));
             } else if (data.message === 'callstack') {
                 this.callstack = data.stack;
+                this.variableRefMap.clear();
+            } else if (data.message === 'expand_table') {
+                const pendingRequest = this.commandRequests.get(data.node_index);
+                if (pendingRequest) {
+                    const parentTableContext = this.tableContextMap.get(data.local_num);
+                    if (parentTableContext && data.table !== "nil") {
+                        const varRefId = this.translateStingrayFrameData(data.table_path.level, data.table, data.local_num);
+                        const variables = this.variableRefMap.get(varRefId) || [];
+                        pendingRequest.resolve(variables);
+                    } else { // register empty so we don't bother re evaluating
+                        const varRefId = this.generateVariableRefId();
+                        this.variableRefMap.set(varRefId, []);
+                        pendingRequest.reject();
+                    }
+
+                    this.commandRequests.delete(data.node_index);
+                }
+            } else if (data.node_index || data.requestId) {
+                const pendingRequest = this.commandRequests.get(data.node_index);
+                if (pendingRequest) {
+                    this.log("Unhandled request: "+ data.node_index + " ... " + JSON.stringify(data));
+                    this.commandRequests.delete(data.node_index);
+                }
             }
         }
     }
@@ -308,65 +269,157 @@ class StingrayDebugSession extends DebugSession {
         this.connection?.sendDebuggerCommand('step_out');
         this.sendResponse(response);
     }
+    
+    protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments): void {
+        this.log(`scopesRequest ${args.frameId}`);
+        let scopes : Scope[] = [];
+        for (const scopeId in SCOPE_DESCS) {
+            const scopeName = SCOPE_DESCS[scopeId];
+            let variablesRefId = this.translateStingrayFrameData(args.frameId, this.callstack[args.frameId][scopeId]);
+            scopes.push(new Scope(scopeName, variablesRefId, false));
+        }
 
-    // protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments): void {
-    //     this.sendResponse(response);
-    // }
+        response.body = { scopes: scopes };
+        this.sendResponse(response);
+    }
 
-    // protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments): void {
-    //     this.sendResponse(response);
-    // }
-
-    // protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments): void {
-    //     if (!this.callstack) {
-    //         return this.sendErrorResponse(response, 1000, "No callstack available");
-    //     }
+    private translateStingrayFrameData(frameId: number, stingrayFrameData: StingrayTableValue[], parentRefId?:number) : number {
+        const refId = this.generateVariableRefId();
+        let variables : Variable[] = [];
         
-    //     const scopes = new Array<Scope>();
-    //     for (const scopeId in SCOPE_DESCS) {
-    //         const scopeName = SCOPE_DESCS[scopeId];
-    //         let scopeContent = this.createScopeContent(args.frameId, scopeId);
-    //         scopeContent.variables = this.translateStingrayVariables(this.callstack[args.frameId][scopeId]);
-    //         scopes.push(new Scope(scopeName, scopeContent.variablesReference, false));
-    //     }
+        let varIdx = 1;
+        stingrayFrameData.forEach(stingrayValue => {
+            let varName = stingrayValue.key || stingrayValue.var_name;
+            if (varName !== "(*temporary)") {
+                if (stingrayValue.type === 'table') {
+                    let tableItems = stingrayValue.value.split('\n\t');
+                    if (tableItems.length > 1) {
+                        let tableRefId = this.generateVariableRefId();
+                        this.translateStingrayTableData(tableItems, tableRefId);
 
-    //     response.body = { scopes: scopes };
-    //     this.sendResponse(response);
-    // }
+                        variables.push({
+                            name: varName,
+                            value: "{table}",
+                            variablesReference: tableRefId,
+                        });
+                    } else {
+                        let reservedTableRefId = this.generateVariableRefId();
+                        this.tableContextMap.set(reservedTableRefId, {
+                            frameId,
+                            varName: varName,
+                            varIndex: varIdx,
+                            parentRefId: parentRefId || -1,
+                        });
+                        variables.push({
+                            name: varName,
+                            value: stingrayValue.value,
+                            variablesReference: reservedTableRefId,
+                        });
+                    }
+                    
+                } else {
+                    variables.push({
+                        name: varName,
+                        value: stingrayValue.value,
+                        variablesReference: 0,
+                    });
+                }
+            }
+            varIdx++;
+        });
 
-    // protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
-    //     if (!this.callstack) {
-    //         return this.sendErrorResponse(response, 1000, "No callstack available");
-    //     }
+        this.variableRefMap.set(refId, variables);
+        return refId;
+    }
 
-    //     const scopeContent = this.getScopeContent(args.variablesReference);
-    //     if (!scopeContent) {
-    //         throw new Error('Unknown variablesReference ' + args.variablesReference);
-    //     }
+    private makeCommandRequest() : StingrayCommandRequset {
+        let request = {resolve: <any>null, reject: <any>null};
+        let requestId = this.lastCommandRequestId++;
+        let p = new Promise<any>((resolve, reject) => {
+            request.resolve = resolve;
+            request.reject = reject;
+        });
+        this.commandRequests.set(requestId, request);
 
-    //     // if (scopeContent.dataReady()) {
-    //     //     response.body = {
-    //     //         variables: scopeContent.getVariables()
-    //     //     };
-    //     //     return this.sendResponse(response);
-    //     // }
+        return {promise: p, id: requestId};
+    }
 
-    //     // this.fetchScopeData(scopeContent).then(() => {
-    //     //     response.body = {
-    //     //         variables: scopeContent.getVariables()
-    //     //     };
-    //     //     this.sendResponse(response);
-    //     // });
+    private requestTableExpand(variableRefId: number) : Promise<Variable[]> {
+        const tableContext = this.tableContextMap.get(variableRefId);
+        if (tableContext) {
+            let tablePath = this.getTablePath(tableContext);
+            if (tablePath){
+                let request = this.makeCommandRequest();
+                this.connection?.sendDebuggerCommand('expand_table', {
+                    local_num: variableRefId, 
+                    node_index: request.id,
+                    table_path: {
+                        level: tableContext.frameId,
+                        local: tablePath[0],
+                        path: tablePath[1]
+                    }
+                });
+                return request.promise;
+            }
+        }
+        this.log("No table context for ref id: " + variableRefId);
+        return Promise.reject();
+    }
 
-    //     response.body = {
-    //         variables : scopeContent.variables,
-    //     };
-    //     this.sendResponse(response);
-    // }
+    private getTablePath(tableContext: StingrayTableContext) : [string, number[]] {
+        let path: number[] = [];
+        this.log("start: " + tableContext.varIndex);
+        while (tableContext.parentRefId >= 0) {
+            path.push(tableContext.varIndex);
+            let next = this.tableContextMap.get(tableContext.parentRefId);
+            this.log("next: " + next?.varIndex || "???");
+            if (next) {
+                tableContext = next;
+            }
+        }
+        
+        this.log(path.reverse().toString());
+        return [tableContext.varName, path];
+    }
 
-    // protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
-    //     this.sendResponse(response);
-    // }
+    private translateStingrayTableData(tableItems: string[], tableRefId: number) {
+        let variables : Variable[] = [];
+        tableItems.forEach(stringVal =>{
+            if (stringVal !== "") {
+                variables.push({
+                    name: stringVal,
+                    value: "{unknown}",
+                    variablesReference: 0,
+                });
+            }
+        });
+        this.variableRefMap.set(tableRefId, variables);
+    }
+
+    private generateVariableRefId() : number {
+        return ++this.lastVariableReferenceId;
+    }
+
+    protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
+        this.log("variablesRequest " + args.variablesReference);
+
+        const variables = this.variableRefMap.get(args.variablesReference);
+        if (variables) {
+            response.body = {
+                variables : variables,
+            };
+            this.sendResponse(response);
+        } else {
+            this.requestTableExpand(args.variablesReference).then((variables)=>{
+                response.body = {
+                    variables : variables,
+                };
+                this.sendResponse(response);
+            }, () => {
+                this.sendResponse(response);
+            });
+        }
+    }
 
     protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
         response.body = { threads: [ new Thread(THREAD_ID, "thread 1") ] };
@@ -384,7 +437,6 @@ class StingrayDebugSession extends DebugSession {
         for (let frame of stack) {
             let isMapped = frame.source[0] === '@';
             let resourcePath = isMapped ? frame.source.slice(1) : frame.source;
-            // TODO: read and parse lua at line of function start.
             let name = frame.function ? `${frame.function} @ ${resourcePath}:${frame.line}` :
                                         `${resourcePath}:${frame.line}`;
             let filePath = this.getResourceFilePath(frame.source);
@@ -405,247 +457,6 @@ class StingrayDebugSession extends DebugSession {
         
         return join(this.projectRoot, resourcePath);
     }
-
-    // private createScopeContent (frameId : number, scopeId : string) : any {
-    //     let scopeContent = {
-    //         variablesReference: this.lastVariableReferenceId,
-    //         frameId: frameId,
-    //         scopeId: scopeId,
-    //         variables: [],
-    //     };
-    //     this.allScopesContent.set(scopeContent.variablesReference, scopeContent);
-    //     this.lastVariableReferenceId += 1;
-
-    //     return scopeContent;
-    // }
-
-    // private getScopeContent(variablesReferenceId: number) : StingrayScopeContent | undefined {
-    //     return this.allScopesContent.get(variablesReferenceId);
-    // }
-
-    // private translateStingrayVariables(stingrayVariables:StingrayTableValue[]) : Variable[] {
-    //     let variables: Variable[] = [];
-
-    //     stingrayVariables.forEach(stingrayValue => {
-    //         if (stingrayValue.var_name !== "(*temporary)") {
-    //             if (stingrayValue.type === 'table') {
-    //                 let tableItems = stingrayValue.value.split('\n');
-    //                 let tableScopeContent = this.createScopeContent(scope.frameId, scope.scopeId);
-
-    //                 variables.push({
-    //                     name: stingrayValue.var_name,
-    //                     value: "{table}",
-    //                     variablesReference: 0,
-    //                 });
-    //             } else {
-    //                 variables.push({
-    //                     name: stingrayValue.var_name,
-    //                     value: stingrayValue.value,
-    //                     variablesReference: 0,
-    //                 });
-    //             }
-    //         }
-    //     });
-
-
-    //     return variables;
-    // }
-
-    //////////////// YARHAR
-    protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
-        if (!this.callstack) {
-            return this.sendErrorResponse(response, 1000, "No callstack available");
-        }
-
-        const scopeContent = this._scopesContent.get(args.variablesReference);
-        if (!scopeContent) {
-            throw new Error('Unknown variablesReference ' + args.variablesReference);
-        }
-
-        if (scopeContent.dataReady()) {
-            response.body = {
-                variables: scopeContent.getVariables()
-            };
-            return this.sendResponse(response);
-        }
-
-        this.fetchScopeData(scopeContent).then(() => {
-            response.body = {
-                variables: scopeContent.getVariables()
-            };
-            this.sendResponse(response);
-        });
-    }
-
-    protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments): void {
-        if (!this.callstack) {
-            return this.sendErrorResponse(response, 1000, "No callstack available");
-        }
-
-        const scopes = new Array<Scope>();
-
-        for (const scopeId in SCOPE_DESCS) {
-            const scopeDisplayName = SCOPE_DESCS[scopeId];
-            const scopeContent = this.createScopeContent(args.frameId, scopeId);
-            this.populateVariables(scopeContent, this.callstack[args.frameId][scopeId]);
-            this._topLevelScopes.push(scopeContent);
-            scopes.push(new Scope(scopeDisplayName, scopeContent.variablesReference, false));
-        }
-
-        response.body = { scopes: scopes };
-        this.sendResponse(response);
-    }
-
-    private createScopeContent (frameId : number, scopeId : string) : ScopeContent {
-        let scopeContent = new ScopeContent(
-            this._variableReferenceId,
-            frameId,
-            scopeId
-        );
-        this._scopesContent.set(scopeContent.variablesReference, scopeContent);
-        this._variableReferenceId += 1;
-        return scopeContent;
-    }
-    private populateVariables(scope: ScopeContent, stingrayTableValues: Array<any>) : void {
-        const variables = [];
-        let duplicatesCounter = 0;
-        for (let i = 0; i < stingrayTableValues.length; ++i) {
-            let tableValue = stingrayTableValues[i];
-            let varName = tableValue.var_name || tableValue.key;
-            if (varName === "(*temporary)") {
-                continue;
-            }
-            if (tableValue.value === "C function") {
-                continue;
-            }
-
-            // Add (n) at the end of a element in the table if one with the same name is already inserted
-            if(tableValue.key){
-                variables.forEach(element => {
-                    if(element.name === tableValue.key){
-                        varName = varName + "(" + ++duplicatesCounter + ")";
-                    }
-                });
-            }
-            let displayName = tableValue.key;
-            let value = tableValue.value;
-            let type = tableValue.type;
-            if (tableValue.type === 'table') {
-                let tableItems = value.split('\n');
-                let tableScopeContent = this.createScopeContent(scope.frameId, scope.scopeId);
-                tableScopeContent.tableVarName = scope.tableVarName || varName;
-                if (!scope.tablePath) {
-                    tableScopeContent.tablePath = [];
-                } else {
-                    tableScopeContent.tablePath = scope.tablePath.concat([i + 1]);
-                }
-
-                variables.push({
-                    name: varName,
-                    type: type,
-                    value: "{table}",
-                    namedVariables: tableItems.length,
-                    variablesReference: tableScopeContent.variablesReference,
-                    tableIndex: i
-                });
-
-            } else if (tableValue.type === 'userdata') {
-                let _value = tableValue.value;
-                // if (_value.includes("#ID"))
-                // {
-                //     _value = this.translateVariableIdSring(_value);
-                // }
-
-                variables.push({
-                    name: varName,
-                    type: type,
-                    value: _value,
-                    variablesReference: 0,
-                    tableIndex: i
-                });
-            }else {
-                variables.push({
-                    name: varName,
-                    type: type,
-                    value: value,
-                    variablesReference: 0,
-                    tableIndex: i
-                });
-            }
-        }
-        scope.variables = variables;
-    }
-
-    private fetchScopeData(scopeContent: ScopeContent) : Promise<any> {
-        this.log("Fetch data");
-        if (scopeContent.dataReady()) {
-            return Promise.resolve(scopeContent);
-        }
-
-        return this.sendDebuggerRequest('expand_table', {
-            local_num: 0,
-            table_path: {
-                level: scopeContent.frameId,
-                local: scopeContent.tableVarName,
-                path: scopeContent.tablePath
-            }
-        }, 'node_index').then(result => {
-            let message = result[0];
-            let tableValues = message.table !== 'nil' ? message.table : [];
-            this.populateVariables(scopeContent, tableValues);
-        });
-    }
-
-    private setupRequest() : any {
-        let request = {resolve: <any>null, reject: <any>null};
-        let requestId = this._requestId++;
-        this._requests.set(requestId, request);
-        let p = new Promise<any>((resolve, reject) => {
-            request.resolve = resolve;
-            request.reject = reject;
-        });
-
-        return {promise: p, id: requestId};
-    }
-
-    private sendDebuggerRequest (command: string, data : any, requestIdName: string = 'requestId') : Promise<any> {
-        let request = this.setupRequest();
-
-        data = data || {};
-        data[requestIdName] = request.id;
-
-        this.log("command requested " + request.id + " " +command);
-        this.connection?.sendDebuggerCommand(command, data);
-
-        return request.promise;
-    }
 }
-//     private getScopeVariables(stingrayScopeContent: StingrayScopeContent) : Variable[] {
-//         interface Variable {
-//             /** The variable's name. */
-//             name: string;
-//             /** The variable's value. This can be a multi-line text, e.g. for a function the body of a function. */
-//             value: string;
-//             /** The type of the variable's value. Typically shown in the UI when hovering over the value. */
-//             type?: string;
-//             /** Properties of a variable that can be used to determine how to render the variable in the UI. */
-//             presentationHint?: VariablePresentationHint;
-//             /** Optional evaluatable name of this variable which can be passed to the 'EvaluateRequest' to fetch the variable's value. */
-//             evaluateName?: string;
-//             /** If variablesReference is > 0, the variable is structured and its children can be retrieved by passing variablesReference to the VariablesRequest. */
-//             variablesReference: number;
-//             /** The number of named child variables.
-//                 The client can use this optional information to present the children in a paged UI and fetch them in chunks.
-//             */
-//             namedVariables?: number;
-//             /** The number of indexed child variables.
-//                 The client can use this optional information to present the children in a paged UI and fetch them in chunks.
-//             */
-//             indexedVariables?: number;
-//         }
-//         let variables = [];
-        
-//     }
-// }
 
 DebugSession.run(StingrayDebugSession);
