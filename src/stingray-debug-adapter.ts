@@ -1,6 +1,3 @@
-import * as vscode from 'vscode';
-import * as SJSON from 'simplified-json';
-import * as fs from 'fs';
 import { DebugSession, Breakpoint, Source, OutputEvent, InitializedEvent, StoppedEvent, Thread, BreakpointEvent, StackFrame, Scope, Variable } from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { StingrayConnection } from './stingray-connection';
@@ -20,6 +17,7 @@ interface StingrayScopeContent {
 interface StingrayTableValue {
     type: string;
     value: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     var_name: string;
 }
 
@@ -149,8 +147,8 @@ class StingrayDebugSession extends DebugSession {
         // // this.initProjectPaths(toolchainPath);
         // // // Establish web socket connection with engine.
         // // this.connectToEngine(ip, port, response);
-        this.connection.on("data", this.onStingrayMessage.bind(this));
-        this.connection.on("connect", ()=>{ 
+        this.connection.onDidReceiveData.add(this.onStingrayMessage.bind(this));
+        this.connection.onDidConnect.add(()=>{
             this.log("We are connected!"); 
             this.connection?.sendDebuggerCommand('report_status');
             this.sendEvent(new InitializedEvent());

@@ -67,16 +67,16 @@ export class ConnectionHandler {
 
     _addOutputChannel(name:string, connection:StingrayConnection) {
         const outputChannel = vscode.window.createOutputChannel(name);
-        connection.on("data", (response:any)=>{
+        connection.onDidReceiveData.add((response:any) => {
             if (response.message) {
                 outputChannel.appendLine(`${getTimestamp()}  [${response.level}][${response.system}] ${response.message}`);
             }
         });
-        connection.on("connect", ()=>{
+        connection.onDidConnect.add(() => {
             outputChannel.show();
             vscode.commands.executeCommand("fatshark-code-assist._refreshConnectedClients");
         });
-        connection.on("close", (hadError:boolean)=>{
+        connection.onDidDisconnect.add((hadError:boolean) => {
             outputChannel.hide();
             outputChannel.dispose();
             vscode.commands.executeCommand("fatshark-code-assist._refreshConnectedClients");

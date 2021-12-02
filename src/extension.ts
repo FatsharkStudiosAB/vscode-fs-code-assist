@@ -3,37 +3,59 @@
 import * as vscode from 'vscode';
 import { ConnectedClientsNodeProvider, ConnectedClientTreeItem } from './connected-clients-node-provider';
 import { connectionHandler } from './connection-handler';
-import { guid } from './utils';
+import { uuid4 } from './utils';
+import * as languageFeatures from './stingray-language-features';
 
 export function activate(context: vscode.ExtensionContext) {
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayRecompile', () => {
-		let config = vscode.workspace.getConfiguration("stingray");
-		let id = guid();
-		let enginePath = config.get("engine_path");
-		let sourceDir = config.get("source_dir"); 
-		let dataDir = config.get("data_dir"); 
-		let platform = config.get("platform");
-		var cmd = {
-			id,
-			type : "compile",
-			"source-directory" : sourceDir,
-			"source-directory-maps" : [
-				{ directory : "core", root : enginePath }
-			],
-			"data-directory" : dataDir,
-			platform : platform,
-		};
+	languageFeatures.activate();
 
-		connectionHandler.getCompiler().on("data", function oneTimeCallback(response) {
-			if (response.id === id) {
-				if (response.finished) {
-					connectionHandler.getAllGames().forEach(game => game.sendCommand("refresh"));
-					connectionHandler.getAllGames().forEach(game => game.sendCommand("game", "unpause"));
-					connectionHandler.getCompiler().off("data", oneTimeCallback);
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayRecompile', () => {
+		vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification
+		}, (progress, token) => new Promise<void>((resolve, reject) => {
+			const id = uuid4();
+			const config = vscode.workspace.getConfiguration("stingray");
+			const enginePath = config.get("engine_path");
+			const sourceDir = config.get("source_dir");
+			const dataDir = config.get("data_dir");
+			const platform = config.get("platform");
+			var cmd = {
+				"id": id,
+				"type" : "compile",
+				"source-directory" : sourceDir,
+				"source-directory-maps" : [
+					{ "directory" : "core", "root" : enginePath }
+				],
+				"data-directory" : dataDir,
+				"platform" : platform,
+			};
+
+			progress.report({ increment: 0, message: "Stingray Compile: Starting..." });
+
+			let status = 0;
+			const compiler = connectionHandler.getCompiler();
+			compiler.onDidReceiveData.add(function onData(data: any) {
+				if (data.id === id && data.finished) {
+					if (data.status === "success") {
+						connectionHandler.getAllGames().forEach(game => {
+							game.sendCommand("refresh");
+							game.sendCommand("game", "unpause");
+						});
+						compiler.onDidReceiveData.remove(onData);
+						resolve();
+					} else {
+						reject();
+					}
+				} else if (data.type === "compile_progress") {
+					const newStatus = Math.ceil(data.i/data.count * 100);
+					const increment = newStatus - status;
+					const message = data.file || "Reticulating splines...";
+					progress.report({ increment: increment, message: "Stingray Compile: " + message });
+					status = newStatus;
 				}
-			}
-		});
-		connectionHandler.getCompiler().sendJSON(cmd);
+			});
+			compiler.sendJSON(cmd);
+		}));
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayConnect', () => {
@@ -157,4 +179,5 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
 	connectionHandler.closeAll();
+	languageFeatures.deactivate();
 }
