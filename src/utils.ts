@@ -1,3 +1,7 @@
+import { join } from "path";
+import {readFileSync, existsSync as fileExists} from 'fs';
+import * as SJSON from 'simplified-json';
+
 /**
  * Returns a GUID
  * RFC 4122 Version 4 Compliant solution:
@@ -37,3 +41,24 @@ export class Multicast {
 		this.listeners.forEach((func: Function) => func.apply(null, args));
 	}
 };
+
+export function getToolchainSettingsPath(toolchain: string) {
+	const path = join(getToolchainPath(toolchain),"settings","ToolChainConfiguration.config");
+	if (fileExists(path)) {
+		return path;
+	}
+	return null;
+}
+
+export function getToolchainPath(toolchain: string) {
+	const path = join("c:/BitSquidBinaries",toolchain);
+	return path;
+}
+
+export function getCurrentToolchainSettings(toolchainPath: string) {
+	let tccSJSON = readFileSync(toolchainPath, 'utf8');
+	let tcc = SJSON.parse(tccSJSON);
+	let projectIndex = tcc.ProjectIndex;
+	let projectData = tcc.Projects[projectIndex];
+	return projectData;
+}

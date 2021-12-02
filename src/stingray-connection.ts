@@ -3,7 +3,7 @@ import { TextEncoder } from 'util';
 import * as utils from './utils';
 import { Multicast } from './utils';
 
-const DEFAULT_IP = '127.0.0.1';
+export const DEFAULT_IP = '127.0.0.1';
 
 enum MessageType { // Must be the same as in engine.
 	Json = 0,
@@ -16,6 +16,8 @@ export class StingrayConnection {
 	_closed : boolean = false;
 	_error : boolean = false;
 	_name : string;
+    readonly ip : string;
+    readonly port : number;
 
 	private _encoder = new TextEncoder();
 
@@ -25,6 +27,8 @@ export class StingrayConnection {
 
 	constructor(port: number, ip?: string) {
 		this._name = `Stingray (${ip||DEFAULT_IP}:${port})`;
+        this.ip = ip || DEFAULT_IP;
+        this.port = port;
 
 		this._socket = new net.Socket();
 		this._socket.on("close", this._onClose.bind(this));

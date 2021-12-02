@@ -2,6 +2,8 @@ import { DebugSession, Breakpoint, Source, OutputEvent, InitializedEvent, Stoppe
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { StingrayConnection } from './stingray-connection';
 import { join } from 'path';
+import { privateEncrypt } from 'crypto';
+import { getCurrentToolchainSettings, getToolchainPath, getToolchainSettingsPath } from './utils';
 
 interface StingrayBreakpoints {
     [key: string]: number[];
@@ -64,7 +66,7 @@ class StingrayDebugSession extends DebugSession {
         this.lastBreakpointId = 0;
         this.lastVariableReferenceId = 0;
         this.lastCommandRequestId = 0;
-        this.projectRoot = "d:/vt2/";
+        this.projectRoot = "";
     }
 
     protected initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
@@ -93,20 +95,19 @@ class StingrayDebugSession extends DebugSession {
     }
 
     protected attachRequest(response: DebugProtocol.AttachResponse, args:any): void {
-        this.connection = new StingrayConnection(14000);
+        var ip = args.ip;
+        var port = args.port;
+        let tcPath = getToolchainSettingsPath(args.toolchain);
+        if (!tcPath) {
+            this.sendResponse(response);
+            return;
+        }
+
+        this.connection = new StingrayConnection(port, ip);
+        let currentTCSettings = getCurrentToolchainSettings(tcPath);
+        this.projectRoot = currentTCSettings.SourceDirectory.replace(/\\/g, '/').toLowerCase() + '/';
+        this.log("attach request path: " + this.projectRoot);
         
-        // this.connection = connectionHandler.getGame(14000);
-        // // var ip = args.ip;
-        // // var port = args.port;
-
-        // // let toolchainPath = this.getToolchainPath(args.toolchain);
-        // // if (toolchainPath == null)
-        // //     return;
-
-        // // //Initiate project paths and id string lookup
-        // // this.initProjectPaths(toolchainPath);
-        // // // Establish web socket connection with engine.
-        // // this.connectToEngine(ip, port, response);
         this.connection.onDidReceiveData.add(this.onStingrayMessage.bind(this));
         this.connection.onDidConnect.add(()=>{
             this.log("We are connected!"); 

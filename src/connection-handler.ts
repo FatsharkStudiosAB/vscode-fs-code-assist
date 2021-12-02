@@ -7,7 +7,7 @@ import { ConnectedClientsNodeProvider } from './connected-clients-node-provider'
 import { StingrayConnection } from "./stingray-connection";
 import { getTimestamp } from './utils';
 
-const MAX_CONNECTIONS = 32;
+export const MAX_CONNECTIONS = 16;
 
 export class ConnectionHandler {
     _compiler?: StingrayConnection;
@@ -34,20 +34,20 @@ export class ConnectionHandler {
         return this._compiler;        
     }
 
-    getGame(port:number) {
+    getGame(port:number, ip?:string) {
         let game = this._game.get(port);
         if (!game || game.isClosed()) {
-            game = new StingrayConnection(port);
+            game = new StingrayConnection(port, ip);
             this._game.set(port, game);
             this._addOutputChannel(`Stingray (${port})`, game);
         }
         return game;
     }
 
-    connectAllGames(portStart:number, range:number) {
+    connectAllGames(portStart:number, range:number, ip?:string) {
         range = Math.min(range, MAX_CONNECTIONS);
         for (let i = 0; i < range; ++i) {
-            this.getGame(portStart+i);
+            this.getGame(portStart+i, ip);
         }
     }
 
@@ -77,8 +77,8 @@ export class ConnectionHandler {
             vscode.commands.executeCommand("fatshark-code-assist._refreshConnectedClients");
         });
         connection.onDidDisconnect.add((hadError:boolean) => {
-            outputChannel.hide();
-            outputChannel.dispose();
+            // outputChannel.hide();
+            // outputChannel.dispose();
             vscode.commands.executeCommand("fatshark-code-assist._refreshConnectedClients");
         });
         this._connectionOutputs.set(connection, outputChannel);

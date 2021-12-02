@@ -140,29 +140,23 @@
       "type": "object",
       "title": "Stingray configuration",
       "properties": {
-        "stingray.engine_path": {
+        "stingray_lua.toolchain": {
           "type": "string",
           "scope": "application",
-          "default": "C:\\BitSquidBinaries\\vermintide2",
-          "description": "Path to the engine binaries e.g. C:\\BitsquidBinaries\\honduras"
+          "default": "vermintide2",
+          "description": "Toolchain name, e.g. 'vermintide2'"
         },
-        "stingray.source_dir": {
-          "type": "string",
-          "scope": "application",
-          "default": "D:\\vt2",
-          "description": "Path to the project source e.g. C:\\projects\\vt2"
-        },
-        "stingray.data_dir": {
-          "type": "string",
-          "scope": "application",
-          "default": "D:\\vt2_data\\win32",
-          "description": "Path to the project compiled data e.g. C:\\projects\\vt2_data\\win32"
-        },
-        "stingray.platform": {
+        "stingray_lua.platform": {
           "type": "string",
           "scope": "application",
           "default": "win32",
-          "description": "Platform name e.g. win32"
+          "description": "Platform name, e.g. 'win32'"
+        },
+        "stingray_lua.debugTargetIP": {
+          "type": "string",
+          "scope": "application",
+          "default": "127.0.0.1",
+          "description": "Platform name, e.g. '127.0.0.1'"
         }
       }
     },

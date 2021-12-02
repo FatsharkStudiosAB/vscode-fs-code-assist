@@ -2,8 +2,8 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { ConnectedClientsNodeProvider, ConnectedClientTreeItem } from './connected-clients-node-provider';
-import { connectionHandler } from './connection-handler';
-import { uuid4 } from './utils';
+import { connectionHandler, MAX_CONNECTIONS } from './connection-handler';
+import { getCurrentToolchainSettings, getToolchainPath, getToolchainSettingsPath, uuid4 } from './utils';
 import * as languageFeatures from './stingray-language-features';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -14,11 +14,26 @@ export function activate(context: vscode.ExtensionContext) {
 			location: vscode.ProgressLocation.Notification
 		}, (progress, token) => new Promise<void>((resolve, reject) => {
 			const id = uuid4();
-			const config = vscode.workspace.getConfiguration("stingray");
-			const enginePath = config.get("engine_path");
-			const sourceDir = config.get("source_dir");
-			const dataDir = config.get("data_dir");
-			const platform = config.get("platform");
+			const config = vscode.workspace.getConfiguration("stingray_lua");
+			const toolchain = <string|undefined>config.get("toolchain");
+			const platform = <string|undefined>config.get("platform");
+
+			if (!toolchain) {
+				reject();
+				return;
+			}
+
+			let tcPath = getToolchainSettingsPath(toolchain);
+			if (!tcPath) {
+				reject();
+				return;
+			}
+
+			let currentTCSettings = getCurrentToolchainSettings(tcPath);
+			const enginePath = getToolchainPath(toolchain).replace(/\\/g, '/');
+			const sourceDir = currentTCSettings.SourceDirectory.replace(/\\/g, '/');
+			const dataDir = currentTCSettings.DataDirectoryBase.replace(/\\/g, '/');
+
 			var cmd = {
 				"id": id,
 				"type" : "compile",
@@ -60,7 +75,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayConnect', () => {
 		connectionHandler.getCompiler();
-		connectionHandler.connectAllGames(14000, 32);
+
+		const config = vscode.workspace.getConfiguration("stingray_lua");
+		const ip = <string|undefined>config.get("debugTargetIP");
+		connectionHandler.connectAllGames(14000, MAX_CONNECTIONS, ip);
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayDisconnect', () => {
@@ -140,18 +158,25 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.attachDebugger', () => {
-		let test = {
-			"type": "stingray_lua",
-			"request": "attach",
-			"name": "Vermintide 2",
-			"toolchain": "Vermintide2 (trunk)",
-			"engine_exe": "stingray_win64_dev_x64.exe",
-		};
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.attachDebugger', (element) => {
+		const connectedClientTreeItem = element as ConnectedClientTreeItem;
+		const connection = connectedClientTreeItem.connection;
+
 		let folder = vscode.workspace.workspaceFolders;
-		if (folder) {
-			//console.log(folder, folder[0]);
-			vscode.debug.startDebugging(folder[0], test );
+		if (folder && connection) {
+			const config = vscode.workspace.getConfiguration("stingray_lua");
+			const toolchain = <string|undefined>config.get("toolchain");
+			const attachArgs = {
+				"type": "stingray_lua",
+				"request": "attach",
+				"name": `Vermintide 2 ${connectedClientTreeItem.connection.getName()}`,
+				"toolchain": toolchain,
+				"ip" : connectedClientTreeItem.connection.ip,
+				"port" : connectedClientTreeItem.connection.port,
+			};
+
+			const sourceDir = folder[0];
+			vscode.debug.startDebugging(sourceDir, attachArgs);
 		}
 	}));
 
@@ -173,8 +198,6 @@ export function activate(context: vscode.ExtensionContext) {
 			clientItem.focusOutput();
 		});
 	});
-
-
 }
 
 export function deactivate() {
