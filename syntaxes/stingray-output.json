@@ -16,7 +16,7 @@
 		},
 		{
 			"name": "token.info-token.stingray-output",
-			"match": "\\[info\\]"
+			"match": "\\[(?:command|info)\\]"
 		},
 		{
 			"include": "#lua-values"
