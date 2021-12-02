@@ -1,151 +1,146 @@
-import { assert } from 'console';
 import * as net from 'net';
+import { TextEncoder } from 'util';
 import * as utils from './utils';
+import { Multicast } from './utils';
 
-type EventType = "close" | "connect" | "data";
 const DEFAULT_IP = '127.0.0.1';
 
+enum MessageType { // Must be the same as in engine.
+	Json = 0,
+	JsonWithBinary = 1,
+}
+
 export class StingrayConnection {
-    _socket : net.Socket;
-    _ready : boolean = false;
-    _closed : boolean = false;
-    _error : boolean = false;
-    _name : string;
+	_socket : net.Socket;
+	_ready : boolean = false;
+	_closed : boolean = false;
+	_error : boolean = false;
+	_name : string;
 
-    _onCloseCallbacks: ((had_error: boolean) => void)[];
-    _onConnectCallbacks: (() => void)[];
-    _onDataCallbacks: ((data: any) => void)[];
+	private _encoder = new TextEncoder();
 
-    constructor(port:number, ip?:string) {
-        this._name = `Stingray (${ip||DEFAULT_IP}:${port})`;
-        this._onCloseCallbacks = [];
-        this._onConnectCallbacks = [];
-        this._onDataCallbacks = [];
+	onDidConnect = new Multicast();
+	onDidDisconnect = new Multicast();
+	onDidReceiveData = new Multicast();
 
-        this._socket = new net.Socket();
-        
-        this._socket.on("close", this._onClose.bind(this));
-        this._socket.on("connect", this._onConnect.bind(this));
-        this._socket.on("data", this._onData.bind(this));
+	constructor(port: number, ip?: string) {
+		this._name = `Stingray (${ip||DEFAULT_IP}:${port})`;
 
-        this._connect(port, ip);
-    }
+		this._socket = new net.Socket();
+		this._socket.on("close", this._onClose.bind(this));
+		this._socket.on("connect", this._onConnect.bind(this));
+		this._socket.on("data", this._onData.bind(this));
+		this._connect(port, ip);
+	}
 
-    close() {
-        this._socket.destroy();
-    }
+	close() {
+		this._socket.destroy();
+	}
 
-    on(event: EventType, listener: (...args: any[]) => void) {
-        if (event === "data") {
-            this._onDataCallbacks.push(listener);
-        } else if (event === "connect") {
-            this._onConnectCallbacks.push(listener);
-        } else if (event === "close") {
-            this._onCloseCallbacks.push(listener);
-        }
-    }
+	sendCommand(command:string, ...args:any) {
+		let guid = utils.uuid4();
+		this._send({
+			id : guid,
+			type : "command",
+			command : command,
+			arg : [...args]
+		});
+		return guid;
+	}
 
-    off(event: EventType, listener: (...args: any[]) => void) {
-        if (event === "data") {
-            let idx = this._onDataCallbacks.indexOf(listener);
-            this._onDataCallbacks.splice(idx, 1);
-        } else if (event === "connect") {
-            let idx = this._onConnectCallbacks.indexOf(listener);
-            this._onConnectCallbacks.splice(idx, 1);
-        } else if (event === "close") {
-            let idx = this._onCloseCallbacks.indexOf(listener);
-            this._onCloseCallbacks.splice(idx, 1);
-        }
-    }
+	sendDebuggerCommand(command: string, data?:any) {
+		this._send(Object.assign({
+			type: "lua_debugger",
+			command: command
+		}, data));
+	}
 
-    sendCommand(command:string, ...args:any) {
-        let guid = utils.guid();
-        this._send({
-            id : guid,
-            type : "command",
-            command : command,
-            arg : [...args]
-        });
-        return guid;
-    }
+	sendJSON(object:any) {
+		this._send(object);
+	}
 
-    sendDebuggerCommand(command: string, data?:any) {
-        this._send(Object.assign({
-            type: "lua_debugger",
-            command: command
-        }, data));
-    }
+	sendLua(text:string) {
+		this._send({
+			type : "script",
+			script: text
+		});
+	}
 
-    sendJSON(object:any) {
-        this._send(object);
-    }
+	isReady() { return this._ready; }
+	isClosed() { return this._closed; }
+	hadError() { return this._error; }
+	getName() { return this._name; }
 
-    sendLua(text:string) {
-        this._send({
-            type : "script",
-            script: text
-        });
-    }
+	_connect(port:number, ip?:string) {
+		this._socket.connect(port, ip || DEFAULT_IP);
+	}
 
-    isReady() { return this._ready; }
-    isClosed() { return this._closed; }
-    hadError() { return this._error; }
-    getName() { return this._name; }
+	_send(data: any) {
+		const payload = JSON.stringify(data);
+		const length = Buffer.byteLength(payload, "utf8");
+		const buffer = new Uint8Array(8 + length);
 
-    _connect(port:number, ip?:string) {
-        this._socket.connect(port, ip || DEFAULT_IP);
-    }
+		buffer[0] = 0;
+		buffer[1] = 0;
+		buffer[2] = 0;
+		buffer[3] = 0;
 
-    _send(data: any) {
-        const payload = JSON.stringify(data);
-        const buffer = new Uint8Array(8 + payload.length);
-        buffer[0] = 0;
-        buffer[1] = 0;
-        buffer[2] = 0;
-        buffer[3] = 0;
-    
-        const len = payload.length;
-        buffer[7] = len & 0xFF;
-        buffer[6] = (len >> 8) & 0xFF;
-        buffer[5] = (len >> 16) & 0xFF;
-        buffer[4] = (len >> 24) & 0xFF;
-        
-        for (let i = 0; i < payload.length; i++ ) {
-            buffer[8+i] = payload.charCodeAt(i);
-        }
-        this._socket.write(buffer);
-    }
+		buffer[4] = 0xFF & (length >> 24);
+		buffer[5] = 0xFF & (length >> 16);
+		buffer[6] = 0xFF & (length >> 8);
+		buffer[7] = 0xFF & length;
 
-    _onConnect() {
-        this._ready = true;
-        this._onConnectCallbacks.forEach(callback => callback());
-    }
+		this._encoder.encodeInto(payload, buffer.subarray(8));
+		this._socket.write(buffer);
+	}
 
-    _onClose(hadError:boolean) {
-        this._ready = false;
-        this._closed = true;
-        this._error = hadError;
-        this._onCloseCallbacks.forEach(callback => callback(hadError));
-    }
+	_onConnect() {
+		this._ready = true;
+		this.onDidConnect.fire();
+	}
 
-    _onData(data:Buffer) {
-        let bufferIdx = 0;
-        let bufferLen = data.length;
-        while (bufferIdx < bufferLen) {
-            let responseType = data.readInt32BE(bufferIdx);
-            bufferIdx += 4;
-            let bufferLen = data.readInt32BE(bufferIdx);
-            bufferIdx += 4;
-        
-            if (responseType === 0) {
-                let responseType = data.toString("binary", bufferIdx, bufferIdx+bufferLen).replace(/\0+$/g,"");
-                let response = JSON.parse(responseType);
-                this._onDataCallbacks.forEach(callback => callback(response));
-            } else {
-                assert(false, "PANICKKCKCKCKCK: "+ JSON.stringify(this._socket.address()));
-            }
+	_onClose(hadError: boolean) {
+		this._ready = false;
+		this._closed = true;
+		this._error = hadError;
+		this.onDidDisconnect.fire(hadError);
+	}
 
-            bufferIdx += bufferLen;
-        }
-    }
+	_onData(data:Buffer) {
+		for (let bufferIdx = 0; bufferIdx < data.length ;) {
+			// Parse message header.
+			const messageType = data.readInt32BE(bufferIdx);
+			bufferIdx += 4;
+			const messageLength = data.readInt32BE(bufferIdx);
+			bufferIdx += 4;
+
+			let jsonLength = messageLength;
+
+			let binaryOffset = 0;
+			if (messageType === MessageType.JsonWithBinary) {
+				binaryOffset = data.readInt32BE(bufferIdx) - 4; // Subtract itself.
+				bufferIdx += 4;
+				jsonLength = binaryOffset;
+			}
+
+			// Read the JSON part.
+			let json = null;
+			if (messageType === MessageType.Json || messageType === MessageType.JsonWithBinary) {
+				const jsonString = data.toString("utf8", bufferIdx, bufferIdx+jsonLength).replace(/\0+$/g,"");
+				json = JSON.parse(jsonString);
+			} else {
+				throw new Error("PANIC: Unknown messageType at socket " + JSON.stringify(this._socket.address()));
+			}
+
+			// Read the binary part.
+			let binary = undefined;
+			if (binaryOffset) {
+				binary = data.subarray(bufferIdx + binaryOffset, messageLength - binaryOffset -8);
+			}
+
+			this.onDidReceiveData.fire(json); // TODO: Pass in binary data too.
+
+			bufferIdx += messageLength;
+		}
+	}
 }

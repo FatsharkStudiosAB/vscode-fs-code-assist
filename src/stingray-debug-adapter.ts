@@ -17,6 +17,7 @@ interface StingrayScopeContent {
 interface StingrayTableValue {
     type: string;
     value: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     var_name: string;
     key?: string;
 }
@@ -106,8 +107,8 @@ class StingrayDebugSession extends DebugSession {
         // // this.initProjectPaths(toolchainPath);
         // // // Establish web socket connection with engine.
         // // this.connectToEngine(ip, port, response);
-        this.connection.on("data", this.onStingrayMessage.bind(this));
-        this.connection.on("connect", ()=>{ 
+        this.connection.onDidReceiveData.add(this.onStingrayMessage.bind(this));
+        this.connection.onDidConnect.add(()=>{
             this.log("We are connected!"); 
             this.connection?.sendDebuggerCommand('report_status');
             this.sendEvent(new InitializedEvent());
