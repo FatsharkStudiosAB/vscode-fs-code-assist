@@ -107,11 +107,6 @@
       ],
       "view/title": [
         {
-          "command": "fatshark-code-assist.stingrayConnect",
-          "group": "navigation",
-          "when": "view == fs-code-assist-clients"
-        },
-        {
           "command": "fatshark-code-assist.stingrayRecompile",
           "group": "navigation",
           "when": "view == fs-code-assist-clients"
@@ -133,6 +128,15 @@
         {
           "command": "fatshark-code-assist.selectionTarget",
           "when": "viewItem == connected-client"
+        },
+
+        {
+          "command": "fatshark-code-assist.stingrayConnect",
+          "when": "viewItem == connection-target"
+        },
+        {
+          "command": "fatshark-code-assist.stingrayDisconnect",
+          "when": "viewItem == connection-target"
         }
       ]
     },
@@ -140,7 +144,13 @@
       "type": "object",
       "title": "Stingray configuration",
       "properties": {
-        "stingray_lua.toolchain": {
+        "stingray_lua.toolchainPath": {
+          "type": "string",
+          "scope": "application",
+          "default": "C:/BitSquidBinaries",
+          "description": "Toolchain name, e.g. 'C:/BitSquidBinaries'"
+        },
+        "stingray_lua.toolchainName": {
           "type": "string",
           "scope": "application",
           "default": "vermintide2",
@@ -268,6 +278,10 @@
     },
     "views": {
       "fs-code-assist": [
+        {
+          "id": "fs-code-assist-targets",
+          "name": "Connection Targets"
+        },
         {
           "id": "fs-code-assist-clients",
           "name": "Connected Clients"

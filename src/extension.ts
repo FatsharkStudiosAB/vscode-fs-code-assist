@@ -5,7 +5,10 @@ import { ConnectedClientsNodeProvider, ConnectedClientTreeItem } from './connect
 import { connectionHandler, MAX_CONNECTIONS } from './connection-handler';
 import { getCurrentToolchainSettings, getToolchainPath, getToolchainSettingsPath, uuid4 } from './utils';
 import * as languageFeatures from './stingray-language-features';
+import { join } from 'path';
+import { ConnectionTargetsNodeProvider, ConnectionTargetTreeItem } from './connection-targets-node-provider';
 
+let currentConnectedTarget:string|null = null;
 export function activate(context: vscode.ExtensionContext) {
 	languageFeatures.activate();
 
@@ -15,8 +18,8 @@ export function activate(context: vscode.ExtensionContext) {
 		}, (progress, token) => new Promise<void>((resolve, reject) => {
 			const id = uuid4();
 			const config = vscode.workspace.getConfiguration("stingray_lua");
-			const toolchain = <string|undefined>config.get("toolchain");
-			const platform = <string|undefined>config.get("platform");
+			const toolchain = <string|undefined>config.get("toolchainName");
+			const platform = <string|undefined>config.get("platform") || "win32";
 
 			if (!toolchain) {
 				reject();
@@ -67,7 +70,7 @@ export function activate(context: vscode.ExtensionContext) {
 			let currentTCSettings = getCurrentToolchainSettings(tcPath);
 			const enginePath = getToolchainPath(toolchain).replace(/\\/g, '/');
 			const sourceDir = currentTCSettings.SourceDirectory.replace(/\\/g, '/');
-			const dataDir = currentTCSettings.DataDirectoryBase.replace(/\\/g, '/');
+			const dataDir = join(currentTCSettings.DataDirectoryBase.replace(/\\/g, '/'), platform);
 			compiler.sendJSON({
 				"id": id,
 				"type" : "compile",
@@ -76,17 +79,23 @@ export function activate(context: vscode.ExtensionContext) {
 					{ "directory" : "core", "root" : enginePath }
 				],
 				"data-directory" : dataDir,
-				"platform" : platform,
+				"platform" : currentConnectedTarget || platform,
 			});
 		}));
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayConnect', () => {
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayConnect', (element?) => {
 		connectionHandler.getCompiler();
-
-		const config = vscode.workspace.getConfiguration("stingray_lua");
-		const ip = <string|undefined>config.get("debugTargetIP");
-		connectionHandler.connectAllGames(14000, MAX_CONNECTIONS, ip);
+		if (element) {
+			const targetSettings = element as ConnectionTargetTreeItem;
+			const port = targetSettings.platform === "win32" ? 14000 : targetSettings.port;
+			const maxConnections = targetSettings.platform === "win32" ? MAX_CONNECTIONS : 1;
+			currentConnectedTarget = targetSettings.platform;
+			connectionHandler.connectAllGames(port, maxConnections, targetSettings.ip);
+		} else {
+			currentConnectedTarget = "win32";
+			connectionHandler.connectAllGames(14000, MAX_CONNECTIONS);
+		}
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayDisconnect', () => {
@@ -173,12 +182,17 @@ export function activate(context: vscode.ExtensionContext) {
 		let folder = vscode.workspace.workspaceFolders;
 		if (folder && connection) {
 			const config = vscode.workspace.getConfiguration("stingray_lua");
-			const toolchain = <string|undefined>config.get("toolchain");
+			const toolchain = <string|undefined>config.get("toolchainName");
+			if (!toolchain) {
+				return;
+			}
+			let tcPath = getToolchainPath(toolchain);
+
 			const attachArgs = {
 				"type": "stingray_lua",
 				"request": "attach",
 				"name": `Vermintide 2 ${connectedClientTreeItem.connection.getName()}`,
-				"toolchain": toolchain,
+				"toolchain": tcPath,
 				"ip" : connectedClientTreeItem.connection.ip,
 				"port" : connectedClientTreeItem.connection.port,
 			};
@@ -187,6 +201,15 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.debug.startDebugging(sourceDir, attachArgs);
 		}
 	}));
+	
+	// connection targets
+	let connectTargetsNodeProvider = new ConnectionTargetsNodeProvider();
+	let connectTargetTreeView = vscode.window.createTreeView("fs-code-assist-targets", {
+		treeDataProvider: connectTargetsNodeProvider, 
+		showCollapseAll: false, 
+		canSelectMany: false
+	});
+	connectTargetsNodeProvider.refresh();
 
 	// Connected clients panel
 	let connectedClientsNodeProvider = new ConnectedClientsNodeProvider();

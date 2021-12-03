@@ -97,7 +97,7 @@ class StingrayDebugSession extends DebugSession {
     protected attachRequest(response: DebugProtocol.AttachResponse, args:any): void {
         var ip = args.ip;
         var port = args.port;
-        let tcPath = getToolchainSettingsPath(args.toolchain);
+        let tcPath = args.toolchain;
         if (!tcPath) {
             this.sendResponse(response);
             return;

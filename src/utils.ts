@@ -1,6 +1,7 @@
 import { join } from "path";
 import {readFileSync, existsSync as fileExists} from 'fs';
 import * as SJSON from 'simplified-json';
+import * as vscode from 'vscode';
 
 /**
  * Returns a GUID
@@ -51,8 +52,18 @@ export function getToolchainSettingsPath(toolchain: string) {
 }
 
 export function getToolchainPath(toolchain: string) {
-	const path = join("c:/BitSquidBinaries",toolchain);
+	
+	const config = vscode.workspace.getConfiguration("stingray_lua");
+	const toolchainRoot = <string|undefined>config.get("toolchainPath") || "c:/BitSquidBinaries";
+
+	const path = join(toolchainRoot, toolchain);
 	return path;
+}
+
+export function getToolchainSettings(toolchainPath: string) {
+	let tccSJSON = readFileSync(toolchainPath, 'utf8');
+	let tcc = SJSON.parse(tccSJSON);
+	return tcc;
 }
 
 export function getCurrentToolchainSettings(toolchainPath: string) {
