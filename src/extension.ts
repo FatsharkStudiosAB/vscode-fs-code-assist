@@ -1,12 +1,21 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import {readFileSync, existsSync as fileExists} from 'fs';
 import { ConnectedClientsNodeProvider, ConnectedClientTreeItem } from './connected-clients-node-provider';
 import { connectionHandler, MAX_CONNECTIONS } from './connection-handler';
-import { getCurrentToolchainSettings, getToolchainPath, getToolchainSettingsPath, uuid4 } from './utils';
+import { getCurrentToolchainSettings, getToolchainSettingsPath, uuid4 } from './utils';
 import * as languageFeatures from './stingray-language-features';
 import { join } from 'path';
 import { ConnectionTargetsNodeProvider, ConnectionTargetTreeItem } from './connection-targets-node-provider';
+
+export function getToolchainPath(toolchain: string) {
+	const config = vscode.workspace.getConfiguration("stingray_lua");
+	const toolchainRoot = <string|undefined>config.get("toolchainPath") || "c:/BitSquidBinaries";
+
+	const path = join(toolchainRoot, toolchain);
+	return path;
+}
 
 let currentConnectedTarget:string|null = null;
 export function activate(context: vscode.ExtensionContext) {
@@ -18,15 +27,17 @@ export function activate(context: vscode.ExtensionContext) {
 		}, (progress, token) => new Promise<void>((resolve, reject) => {
 			const id = uuid4();
 			const config = vscode.workspace.getConfiguration("stingray_lua");
-			const toolchain = <string|undefined>config.get("toolchainName");
+			const toolchainRootPath = <string|undefined>config.get("toolchainPath");
+			const toolchainName = <string|undefined>config.get("toolchainName");
 			const platform = <string|undefined>config.get("platform") || "win32";
-
-			if (!toolchain) {
+			if (!toolchainRootPath || !toolchainName) {
 				reject();
 				return;
 			}
 
-			let tcPath = getToolchainSettingsPath(toolchain);
+			const toolchainPath = join(toolchainRootPath, toolchainName);
+
+			let tcPath = getToolchainSettingsPath(toolchainPath);
 			if (!tcPath) {
 				reject();
 				return;
@@ -68,7 +79,7 @@ export function activate(context: vscode.ExtensionContext) {
 			progress.report({ increment: 0, message: "Stingray Compile: Starting..." });
 
 			let currentTCSettings = getCurrentToolchainSettings(tcPath);
-			const enginePath = getToolchainPath(toolchain).replace(/\\/g, '/');
+			const enginePath = toolchainPath.replace(/\\/g, '/');
 			const sourceDir = currentTCSettings.SourceDirectory.replace(/\\/g, '/');
 			const dataDir = join(currentTCSettings.DataDirectoryBase.replace(/\\/g, '/'), platform);
 			compiler.sendJSON({
@@ -209,7 +220,9 @@ export function activate(context: vscode.ExtensionContext) {
 		showCollapseAll: false, 
 		canSelectMany: false
 	});
-	connectTargetsNodeProvider.refresh();
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.refreshTargets', () => {
+		connectTargetsNodeProvider.refresh();
+	}));
 
 	// Connected clients panel
 	let connectedClientsNodeProvider = new ConnectedClientsNodeProvider();

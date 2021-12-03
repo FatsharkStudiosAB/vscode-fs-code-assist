@@ -1,6 +1,8 @@
 // implements tree view UI for connected clients
+import { join } from 'path';
 import * as vscode from 'vscode';
-import { getToolchainSettingsPath, getToolchainSettings } from './utils';
+import { } from './extension';
+import { getToolchainSettings, getToolchainSettingsPath } from './utils';
 
 export class ConnectionTargetsNodeProvider implements vscode.TreeDataProvider<ConnectionTargetTreeItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<ConnectionTargetTreeItem | undefined | void> = new vscode.EventEmitter<ConnectionTargetTreeItem | undefined | void>();
@@ -18,14 +20,14 @@ export class ConnectionTargetsNodeProvider implements vscode.TreeDataProvider<Co
 
     private _gatherConnectionTargets() {
         const config = vscode.workspace.getConfiguration("stingray_lua");
-        const toolchain = <string|undefined>config.get("toolchainName");
-        const platform = <string|undefined>config.get("platform") || "win32";
-
-        if (!toolchain) {
+        const toolchainRootPath = <string|undefined>config.get("toolchainPath");
+        const toolchainName = <string|undefined>config.get("toolchainName");
+        if (!toolchainRootPath || !toolchainName) {
             return;
         }
 
-        let tcPath = getToolchainSettingsPath(toolchain);
+        const toolchainPath = join(toolchainRootPath, toolchainName);
+        let tcPath = getToolchainSettingsPath(toolchainPath);
         if (!tcPath) {
             return;
         }

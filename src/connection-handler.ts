@@ -13,10 +13,12 @@ export class ConnectionHandler {
 	_compiler?: StingrayConnection;
 	_game: Map<number, StingrayConnection>;
 	_connectionOutputs: Map<StingrayConnection, vscode.OutputChannel>;
+    _outputsByName: Map<string, vscode.OutputChannel>;
 
 	constructor(){
 		this._game = new Map();
 		this._connectionOutputs = new Map();
+        this._outputsByName = new Map();
 	}
 
 	closeAll() {
@@ -66,16 +68,23 @@ export class ConnectionHandler {
 	}
 
 	_addOutputChannel(name:string, connection:StingrayConnection) {
+        let oldOutputChannel = this._outputsByName.get(name);
+        if (oldOutputChannel) {
+            oldOutputChannel.hide();
+			oldOutputChannel.dispose();
+            this._outputsByName.delete(name);
+        }
+        
 		let outputChannel: vscode.OutputChannel;
 		connection.onDidConnect.add(() => {
 			outputChannel = vscode.window.createOutputChannel(name);
 			outputChannel.show();
 			this._connectionOutputs.set(connection, outputChannel);
+            this._outputsByName.set(name, outputChannel);
 			vscode.commands.executeCommand("fatshark-code-assist._refreshConnectedClients");
 		});
 		connection.onDidDisconnect.add((hadError:boolean) => {
-			outputChannel.hide();
-			//outputChannel.dispose();
+            this._connectionOutputs.delete(connection);
 			vscode.commands.executeCommand("fatshark-code-assist._refreshConnectedClients");
 		});
 		connection.onDidReceiveData.add((data:any) => {

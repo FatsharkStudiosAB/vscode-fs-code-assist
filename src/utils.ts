@@ -1,7 +1,6 @@
 import { join } from "path";
 import {readFileSync, existsSync as fileExists} from 'fs';
 import * as SJSON from 'simplified-json';
-import * as vscode from 'vscode';
 
 /**
  * Returns a GUID
@@ -43,31 +42,22 @@ export class Multicast {
 	}
 };
 
-export function getToolchainSettingsPath(toolchain: string) {
-	const path = join(getToolchainPath(toolchain),"settings","ToolChainConfiguration.config");
-	if (fileExists(path)) {
-		return path;
-	}
-	return null;
-}
-
-export function getToolchainPath(toolchain: string) {
-	
-	const config = vscode.workspace.getConfiguration("stingray_lua");
-	const toolchainRoot = <string|undefined>config.get("toolchainPath") || "c:/BitSquidBinaries";
-
-	const path = join(toolchainRoot, toolchain);
-	return path;
-}
-
 export function getToolchainSettings(toolchainPath: string) {
 	let tccSJSON = readFileSync(toolchainPath, 'utf8');
 	let tcc = SJSON.parse(tccSJSON);
 	return tcc;
 }
 
-export function getCurrentToolchainSettings(toolchainPath: string) {
-	let tccSJSON = readFileSync(toolchainPath, 'utf8');
+export function getToolchainSettingsPath(toolchainPath: string) {
+	const path = join(toolchainPath,"settings","ToolChainConfiguration.config");
+	if (fileExists(path)) {
+		return path;
+	}
+	return null;
+}
+
+export function getCurrentToolchainSettings(toolchainSettingsPath: string) {
+	let tccSJSON = readFileSync(toolchainSettingsPath, 'utf8');
 	let tcc = SJSON.parse(tccSJSON);
 	let projectIndex = tcc.ProjectIndex;
 	let projectData = tcc.Projects[projectIndex];

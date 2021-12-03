@@ -2,8 +2,7 @@ import { DebugSession, Breakpoint, Source, OutputEvent, InitializedEvent, Stoppe
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { StingrayConnection } from './stingray-connection';
 import { join } from 'path';
-import { privateEncrypt } from 'crypto';
-import { getCurrentToolchainSettings, getToolchainPath, getToolchainSettingsPath } from './utils';
+import { getCurrentToolchainSettings, getToolchainSettingsPath } from './utils';
 
 interface StingrayBreakpoints {
     [key: string]: number[];
@@ -103,11 +102,17 @@ class StingrayDebugSession extends DebugSession {
             return;
         }
 
-        this.connection = new StingrayConnection(port, ip);
-        let currentTCSettings = getCurrentToolchainSettings(tcPath);
+        const tcSettingsPath = getToolchainSettingsPath(tcPath);
+        if (!tcSettingsPath) {
+            this.sendResponse(response);
+            return;
+        }
+
+        let currentTCSettings = getCurrentToolchainSettings(tcSettingsPath);
         this.projectRoot = currentTCSettings.SourceDirectory.replace(/\\/g, '/').toLowerCase() + '/';
         this.log("attach request path: " + this.projectRoot);
         
+        this.connection = new StingrayConnection(port, ip);
         this.connection.onDidReceiveData.add(this.onStingrayMessage.bind(this));
         this.connection.onDidConnect.add(()=>{
             this.log("We are connected!"); 

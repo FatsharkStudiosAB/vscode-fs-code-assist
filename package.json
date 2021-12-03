@@ -73,6 +73,11 @@
         "command": "fatshark-code-assist.attachDebugger",
         "title": "Attach Debugger",
         "category": "Stingray"
+      },
+      {
+        "command": "fatshark-code-assist.refreshTargets",
+        "title": "Refresh",
+        "category": "Stingray"
       }
     ],
     "menus": {
@@ -96,6 +101,10 @@
         {
           "command": "fatshark-code-assist.attachDebugger",
           "when": "false"
+        },
+        {
+          "command": "fatshark-code-assist.refreshTargets",
+          "when": "false"
         }
       ],
       "editor/context": [
@@ -110,6 +119,11 @@
           "command": "fatshark-code-assist.stingrayRecompile",
           "group": "navigation",
           "when": "view == fs-code-assist-clients"
+        },
+        {
+          "command": "fatshark-code-assist.refreshTargets",
+          "group": "navigation",
+          "when": "view == fs-code-assist-targets"
         }
       ],
       "view/item/context": [
@@ -161,12 +175,6 @@
           "scope": "application",
           "default": "win32",
           "description": "Platform name, e.g. 'win32'"
-        },
-        "stingray_lua.debugTargetIP": {
-          "type": "string",
-          "scope": "application",
-          "default": "127.0.0.1",
-          "description": "Platform name, e.g. '127.0.0.1'"
         }
       }
     },
