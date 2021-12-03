@@ -2,7 +2,7 @@
   "name": "fatshark-code-assist",
   "displayName": "Fatshark Code Assist",
   "description": "",
-  "version": "0.0.2",
+  "version": "0.0.4",
   "publisher": "Fatshark",
   "engines": {
     "vscode": "^1.62.0"
@@ -306,7 +306,47 @@
         "type": "stingray_lua",
         "label": "Stingray Lua",
         "program": "./out/stingray-debug-adapter.js",
-        "runtime": "node"
+        "runtime": "node",
+        "configurationSnippets": [
+          {
+            "label": "Stingray: Application (Lua)",
+            "description": "A new configuration for launching and debugging a Stingray project.",
+            "body": {
+              "type": "stingray_lua",
+              "request": "attach",
+              "name": "${1:My application name}",
+              "toolchain": "C:/BitSquidBinaries/${2:vermintide2}",
+              "ip": "127.0.0.1",
+              "port": 14000
+            }
+          }
+        ],
+        "configurationAttributes": {
+          "attach": {
+            "required": [
+              "ip",
+              "port",
+              "toolchain"
+            ],
+            "properties": {
+              "ip": {
+                "type": "string",
+                "description": "IP address of the device running the Stingray engine.",
+                "default": "127.0.0.1"
+              },
+              "port": {
+                "type": "number",
+                "description": "Port used by the engine for console connections.",
+                "default": 14000
+              },
+              "toolchain": {
+                "type": "string",
+                "description": "the full directory where your toolchain resides (e.g. c:/project/mytoolchain)",
+                "toolchain": "C:/BitSquidBinaries/vermintide2"
+              }
+            }
+          }
+        }
       }
     ]
   },

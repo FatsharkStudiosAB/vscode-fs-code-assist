@@ -136,12 +136,12 @@ class StingrayDebugSession extends DebugSession {
     }
 
     private log(message:string) {
-        this.sendEvent(new OutputEvent(message + '\r\n'));
+        //this.sendEvent(new OutputEvent(message + '\r\n'));
     }
 
     protected onStingrayMessage(data:any) {
        if (data.type === "lua_debugger"){
-            this.log(JSON.stringify(data));
+            // this.log(JSON.stringify(data));
             if (data.message === 'halted') {
                 let line = data.line;
                 let isMapped = data.source[0] === '@';
