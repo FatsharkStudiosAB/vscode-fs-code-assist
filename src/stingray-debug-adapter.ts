@@ -1,9 +1,12 @@
 import { DebugSession, Breakpoint, Source, OutputEvent, InitializedEvent, StoppedEvent, Thread, BreakpointEvent, StackFrame, Scope, Variable } from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { StingrayConnection } from './stingray-connection';
-import { join } from 'path';
 import { getCurrentToolchainSettings, getToolchainSettingsPath } from './utils';
 import { luaHelpers } from './engine-snippets';
+import path = require('path');
+import {readFileSync, existsSync as fileExists} from 'fs';
+import * as SJSON from 'simplified-json';
+
 
 interface StingrayBreakpoints {
     [key: string]: number[];
@@ -55,6 +58,9 @@ class StingrayDebugSession extends DebugSession {
 
     callstack: any | null;
     projectRoot: string;
+    projectFolderMaps: Map<string, string>;
+    projectMapFolder : string;
+    coreMapFolder : string;
 
     constructor() {
         super();
@@ -62,11 +68,14 @@ class StingrayDebugSession extends DebugSession {
         this.variableRefMap = new Map<number, Variable[]>();
         this.tableContextMap = new Map<number, StingrayTableContext>();
         this.commandRequests = new Map<number, any>();
+        this.projectFolderMaps = new Map<string, string>();
 
         this.lastBreakpointId = 0;
         this.lastVariableReferenceId = 0;
         this.lastCommandRequestId = 0;
         this.projectRoot = "";
+        this.projectMapFolder = "";
+        this.coreMapFolder = "";
     }
 
     protected initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
@@ -109,6 +118,8 @@ class StingrayDebugSession extends DebugSession {
             return;
         }
 
+        this.initProjectPaths(tcPath);
+
         let currentTCSettings = getCurrentToolchainSettings(tcSettingsPath);
         this.projectRoot = currentTCSettings.SourceDirectory.replace(/\\/g, '/').toLowerCase() + '/';
         this.log("attach request path: " + this.projectRoot);
@@ -145,21 +156,20 @@ class StingrayDebugSession extends DebugSession {
        if (data.type === "lua_debugger"){
             // this.log(JSON.stringify(data));
             if (data.message === 'halted') {
-                let line = data.line;
-                let isMapped = data.source[0] === '@';
-                let resourcePath = isMapped ? data.source.slice(1) : data.source;
+                const line = data.line;
+                const isMapped = data.source[0] === '@';
+                const resourcePath = isMapped ? data.source.slice(1) : data.source;
                 let haltReason = 'paused';
                 if (this.breakpoints.has(resourcePath)) {
-                    let fileBreakpoints = this.breakpoints.get(resourcePath);
-                    let bp = fileBreakpoints?.find(bp => bp.line === line);
+                    const fileBreakpoints = this.breakpoints.get(resourcePath);
+                    const bp = fileBreakpoints?.find(bp => bp.line === line);
                     if (bp) {
-                        this.log("breakpoint halt");
+                        this.log(`breakpoint halt: ${resourcePath}:${line}`);
                         bp.verified = true;
                         this.sendEvent(new BreakpointEvent("update", bp));
                         haltReason = 'breakpoint';
                     }
                 }
-
                 this.sendEvent(new StoppedEvent(haltReason, THREAD_ID));
             } else if (data.message === 'callstack') {
                 this.callstack = data.stack;
@@ -191,13 +201,49 @@ class StingrayDebugSession extends DebugSession {
     }
 
     protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
-        let filePath = args.source.path;
-        let clientLines = args.lines;
-        let validScript = true;
+        const filePath = args.source.path;
+        const clientLines = args.lines;
+
+        if (!filePath) {
+            this.sendResponse(response);
+            return;
+        }
 
         // Find resource root looking for settings.ini or .stingray-asset-server-directory
         let resourcePath = filePath;
-        const resourceName = resourcePath?.replace(/\\/g, '/').replace(this.projectRoot, "") || "???";
+        let validScript = true;
+
+        // Uppercase the paths so we do case insensitive comparison in the while loop
+        let projectMapFolder = this.projectMapFolder.toUpperCase();
+        let coreMapFolder = this.coreMapFolder.toUpperCase();
+        let dirPath = path.dirname(filePath).replace(/^[\/\\]|[\/\\]$/g, '').toUpperCase();
+
+        while (true) {
+            // Check that we have a valid script folder or that we did not reach the drive root.
+            if (!dirPath || dirPath === filePath || dirPath === '.') {
+                validScript = false;
+                break;
+            }
+
+            if (dirPath === path.dirname(dirPath)) {
+                validScript = false;
+                break;
+            }
+
+            if (dirPath === projectMapFolder) {
+                resourcePath = path.relative(this.projectMapFolder, filePath);
+                break;
+            }
+
+            if (dirPath === coreMapFolder) {
+                resourcePath = path.join('core', path.relative(this.coreMapFolder, filePath));
+                break;
+            }
+
+            dirPath = path.dirname(dirPath);
+        }
+
+        const resourceName = resourcePath.replace(/\\/g, '/');//resourcePath?.replace(/\\/g, '/').replace(this.projectRoot, "") || "???";
         this.log(resourceName);
 
         // Verify breakpoint locations
@@ -460,11 +506,53 @@ class StingrayDebugSession extends DebugSession {
         this.sendResponse(response);
     }
 
+    // private getResourceFilePath(source: string) {
+    //     let isMapped = source[0] === '@';
+    //     let resourcePath = isMapped ? source.slice(1) : source;
+        
+    //     return join(this.projectRoot, resourcePath);
+    // }
+
+    private initProjectPaths(toolchainPath : string): void {
+        let tccPath = getToolchainSettingsPath(toolchainPath) || path.join(toolchainPath,"settings","ToolChainConfiguration.config");
+        let tccSJSON = readFileSync(tccPath, 'utf8');
+        let tcc = SJSON.parse(tccSJSON);
+        let projectIndex = tcc.ProjectIndex;
+        let projectData = tcc.Projects[projectIndex];
+        this.projectMapFolder = projectData.SourceDirectory.replace(/^[\/\\]|[\/\\]$/g, '');
+
+        // Set project root to resolve scripts.
+        this.projectFolderMaps.set('<project>', this.projectMapFolder);
+
+        // Add core map folder to resolve core scripts
+        let coreMapFolder = toolchainPath;
+        // If SourceRepositoryPath is in the toolchain config use this for core folder instead of default toolchain
+        if (tcc.SourceRepositoryPath !== null) {
+            coreMapFolder = tcc.SourceRepositoryPath;
+        }
+        this.coreMapFolder = path.join(coreMapFolder, 'core');
+
+        if (fileExists(this.coreMapFolder)) {
+            this.projectFolderMaps.set('core', path.dirname(this.coreMapFolder));
+        }
+    }
+
     private getResourceFilePath(source: string) {
         let isMapped = source[0] === '@';
         let resourcePath = isMapped ? source.slice(1) : source;
-        
-        return join(this.projectRoot, resourcePath);
+        const projectPath = this.projectFolderMaps.get("<project>");
+        let filePath = projectPath ? path.join(projectPath, resourcePath) : resourcePath;
+        if (isMapped && !fileExists(filePath)) {
+            let mapName = resourcePath.split('/')[0];
+            if (mapName) {
+                const mappedPath = this.projectFolderMaps.get(mapName);
+                if (mappedPath) {
+                    filePath = path.join(mappedPath, resourcePath);
+                }
+            }
+        }
+
+        return filePath;
     }
 }
 
