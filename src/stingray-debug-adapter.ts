@@ -3,6 +3,7 @@ import { DebugProtocol } from 'vscode-debugprotocol';
 import { StingrayConnection } from './stingray-connection';
 import { join } from 'path';
 import { getCurrentToolchainSettings, getToolchainSettingsPath } from './utils';
+import { luaHelpers } from './engine-snippets';
 
 interface StingrayBreakpoints {
     [key: string]: number[];
@@ -116,6 +117,7 @@ class StingrayDebugSession extends DebugSession {
         this.connection.onDidReceiveData.add(this.onStingrayMessage.bind(this));
         this.connection.onDidConnect.add(()=>{
             this.log("We are connected!"); 
+            this.connection?.sendLua(luaHelpers.join("\n"));
             this.connection?.sendDebuggerCommand('report_status');
             this.sendEvent(new InitializedEvent());
             this.sendResponse(response);

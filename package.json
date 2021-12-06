@@ -2,14 +2,30 @@
   "name": "fatshark-code-assist",
   "displayName": "Fatshark Code Assist",
   "description": "",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "Fatshark",
   "engines": {
     "vscode": "^1.62.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ManuelBlanc/vscode-vtide.git"
+},
+  "author": {
+    "url": "http://www.fatshark.se",
+    "name": "Fatshark",
+    "email": "tools@fatshark.se"
+},
   "categories": [
-    "Other"
+    "Debuggers",
+    "Programming Languages"
   ],
+  "keywords": [
+    "fatshark",
+    "stingray",
+    "debugger",
+    "lua"
+],
   "activationEvents": [
     "onCommand:fatshark-code-assist.stingrayConnect",
     "onCommand:fatshark-code-assist.stingrayRecompile",
