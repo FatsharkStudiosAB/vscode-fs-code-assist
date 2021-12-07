@@ -19,7 +19,7 @@ export class ConnectionTargetsNodeProvider implements vscode.TreeDataProvider<Co
 	}
 
     private _gatherConnectionTargets() {
-        const config = vscode.workspace.getConfiguration("stingray_lua");
+        const config = vscode.workspace.getConfiguration("StingrayLua");
         const toolchainRootPath = <string|undefined>config.get("toolchainPath");
         const toolchainName = <string|undefined>config.get("toolchainName");
         if (!toolchainRootPath || !toolchainName) {

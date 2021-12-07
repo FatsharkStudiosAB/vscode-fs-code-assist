@@ -1,0 +1,381 @@
+{
+	"uuid": "987f6609-b91c-4bd4-a5ba-13e3019d9068",
+	"scopeName": "source.sjson",
+	"fileTypes": [
+		"sjson",
+		"material",
+		"shader",
+		"shader_node",
+		"shader_source",
+		"render_config",
+		"particles",
+		"bsi",
+		"texture",
+		"unit",
+		"physics",
+		"landscape",
+		"level",
+		"timpani_bank",
+		"timpani_master",
+		"mouse_cursor",
+		"surface_properties",
+		"physics_properties",
+		"decals",
+		"script_flow_nodes",
+		"flow",
+		"network_config",
+		"strings",
+		"volume_type",
+		"package",
+		"sound_environment",
+		"texture_category",
+		"shading_environment_template",
+		"shading_environment"
+	],
+	"foldingStartMarker": "(?x:^\\s*[{\\[](?!.*[}\\]],?\\s*$)\n|[{\\[]\\s*$)",
+	"foldingStopMarker": "(?x:     # turn on extended mode\n                         ^      # a line beginning with\n                         \\s*    # some optional space\n                         [}\\]]  # and the close of an object or array\n                       )",
+	"keyEquivalent": "^~J",
+	"name": "SJSON",
+	"patterns": [
+		{
+			"include": "#preprocessor"
+		},
+		{
+			"include": "#value"
+		},
+		{
+			"include": "#dictionary"
+		}
+	],
+	"repository": {
+		"array": {
+			"begin": "\\[",
+			"beginCaptures": {
+				"0": {
+					"name": "punctuation.definition.array.begin.sjson"
+				}
+			},
+			"end": "\\]",
+			"endCaptures": {
+				"0": {
+					"name": "punctuation.definition.array.end.sjson"
+				}
+			},
+			"name": "meta.structure.array.sjson",
+			"patterns": [
+				{
+					"include": "#value"
+				},
+				{
+					"match": "[, ]",
+					"name": "punctuation.separator.array.sjson"
+				},
+				{
+					"match": "[^\\s\\]]",
+					"name": "invalid.illegal.expected-array-separator.sjson"
+				}
+			]
+		},
+		"comments": {
+			"patterns": [
+				{
+					"name": "meta.preprocessor.fatshark",
+					"begin": "^\\s*((//)IF_BEGIN)\\b",
+					"beginCaptures": {
+						"1": {
+							"name": "keyword.control.preprocessor.fatshark"
+						},
+						"2": {
+							"name": "punctuation.definition.preprocessor.fatshark"
+						}
+					},
+					"end": "^\\s*((//)IF_END)\\b(.*)\\n",
+					"endCaptures": {
+						"1": {
+							"name": "keyword.control.preprocessor.fatshark"
+						},
+						"2": {
+							"name": "punctuation.definition.preprocessor.fatshark"
+						},
+						"3": {
+							"name": "comment.line.preprocessor.fatshark"
+						}
+					},
+					"patterns": [
+						{
+							"begin": "\\G",
+							"end": "(?=\\n)",
+							"patterns": [
+								{
+									"include": "#directive-condition"
+								}
+							]
+						},
+						{
+							"include": "source.json"
+						}
+					]
+				},
+				{
+					"name": "meta.preprocessor.fatshark",
+					"begin": "^\\s*((//)(KEEP|REMOVE)_IF)\\b",
+					"beginCaptures": {
+						"1": {
+							"name": "keyword.control.preprocessor.fatshark"
+						},
+						"2": {
+							"name": "punctuation.definition.preprocessor.fatshark"
+						}
+					},
+					"end": "^\\s*((//)\\2_IF)\\b(.*)\\n",
+					"endCaptures": {
+						"1": {
+							"name": "keyword.control.preprocessor.fatshark"
+						},
+						"2": {
+							"name": "punctuation.definition.preprocessor.fatshark"
+						},
+						"3": {
+							"name": "comment.line.preprocessor.fatshark"
+						}
+					},
+					"patterns": [
+						{
+							"match": "\\G\\s*(win32|ps4|xb1)",
+							"name": "constant.language.preprocessor.fatshark"
+						},
+						{
+							"include": "source.sjson"
+						}
+					]
+				},
+				{
+					"begin": "/\\*\\*",
+					"captures": {
+						"0": {
+							"name": "punctuation.definition.comment.sjson"
+						}
+					},
+					"end": "\\*/",
+					"name": "comment.block.documentation.sjson"
+				},
+				{
+					"begin": "/\\*",
+					"captures": {
+						"0": {
+							"name": "punctuation.definition.comment.sjson"
+						}
+					},
+					"end": "\\*/",
+					"name": "comment.block.sjson"
+				},
+				{
+					"captures": {
+						"1": {
+							"name": "punctuation.definition.comment.sjson"
+						}
+					},
+					"match": "(//).*$\\n?",
+					"name": "comment.line.double-slash.js"
+				}
+			]
+		},
+		"constant": {
+			"match": "\\b(?:true|false|null|nil)\\b",
+			"name": "constant.language.sjson"
+		},
+		"dictionary": {
+			"name": "meta.structure.dictionary.sjson",
+			"patterns": [
+				{
+					"include": "#identifier"
+				},
+				{
+					"include": "#comments"
+				},
+				{
+					"begin": "([:=])\\s*",
+					"beginCaptures": {
+						"1": {
+							"name": "punctuation.separator.dictionary.key-value.sjson"
+						}
+					},
+					"end": "([,\\s])|(?=\\})",
+					"endCaptures": {
+						"1": {
+							"name": "punctuation.separator.dictionary.pair.sjson"
+						}
+					},
+					"name": "meta.structure.dictionary.value.sjson",
+					"patterns": [
+						{
+							"comment": "the.sjson object value",
+							"include": "#value"
+						},
+						{
+							"match": "[^\\s,]",
+							"name": "invalid.illegal.expected-dictionary-separator.sjson"
+						}
+					]
+				},
+				{
+					"match": "[^\\s\\}]",
+					"name": "invalid.illegal.expected-dictionary-separator.sjson"
+				}
+			]
+		},
+		"double_quoted_string": {
+			"begin": "\"",
+			"beginCaptures": {
+				"0": {
+					"name": "punctuation.definition.string.begin.sjson"
+				}
+			},
+			"end": "\"",
+			"endCaptures": {
+				"0": {
+					"name": "punctuation.definition.string.end.sjson"
+				}
+			},
+			"name": "string.quoted.double.sjson",
+			"patterns": [
+				{
+					"match": "(?x:                # turn on extended mode\n                     \\\\                # a literal backslash\n                     (?:               # ...followed by...\n                       [\"\\\\/bfnrt]     # one of these characters\n                       |               # ...or...\n                       u               # a u\n                       [0-9a-fA-F]{4}  # and four hex digits\n                     )\n                   )",
+					"name": "constant.character.escape.sjson"
+				},
+				{
+					"match": "\\\\.",
+					"name": "invalid.illegal.unrecognized-string-escape.sjson"
+				}
+			]
+		},
+		"identifier": {
+			"name": "keyword.source.identifier.sjson",
+			"patterns": [
+				{
+					"match": "\\bSUBTRACT_PACKAGES\\b",
+					"name": "variable.language.SUBTRACT_PACKAGES.sjson"
+				},
+				{
+					"include": "#string",
+					"name": "identifier.sjson"
+				},
+				{
+					"match": "\\w+",
+					"name": "identifier.sjson"
+				}
+			]
+		},
+		"number": {
+			"comment": "handles integer and decimal numbers",
+			"match": "(?x:         # turn on extended mode\n\t\t\t             -?         # an optional minus\n\t\t\t             (?:\n\t\t\t               0        # a zero\n\t\t\t               |        # ...or...\n\t\t\t               [1-9]    # a 1-9 character\n\t\t\t               \\d*      # followed by zero or more digits\n\t\t\t             )\n\t\t\t             (?:\n\t\t\t               (?:\n\t\t\t                 \\.     # a period\n\t\t\t                 \\d+    # followed by one or more digits\n\t\t\t               )?\n\t\t\t               (?:\n\t\t\t                 [eE]   # an e character\n\t\t\t                 [+-]?  # followed by an option +/-\n\t\t\t                 \\d+    # followed by one or more digits\n\t\t\t               )?       # make exponent optional\n\t\t\t             )?         # make decimal portion optional\n\t\t\t           )",
+			"name": "constant.numeric.sjson"
+		},
+		"object": {
+			"begin": "\\{",
+			"beginCaptures": {
+				"0": {
+					"name": "punctuation.definition.dictionary.begin.sjson"
+				}
+			},
+			"comment": "an SJSON object",
+			"end": "\\}",
+			"endCaptures": {
+				"0": {
+					"name": "punctuation.definition.dictionary.end.sjson"
+				}
+			},
+			"name": "meta.structure.dictionary.sjson",
+			"patterns": [
+				{
+					"include": "#dictionary"
+				}
+			]
+		},
+		"string": {
+			"patterns": [
+				{
+					"include": "#triple_quoted_string"
+				},
+				{
+					"include": "#double_quoted_string"
+				}
+			]
+		},
+		"triple_quoted_string": {
+			"begin": "\"\"\"",
+			"beginCaptures": {
+				"0": {
+					"name": "punctuation.definition.string.begin.sjson"
+				}
+			},
+			"end": "\"\"\"",
+			"endCaptures": {
+				"0": {
+					"name": "punctuation.definition.string.end.sjson"
+				}
+			},
+			"name": "text.plain.sjson",
+			"patterns": [
+				{
+					"match": "(?x:                # turn on extended mode\n                     \\\\                # a literal backslash\n                     (?:               # ...followed by...\n                       [\\\\/bfnrt]     # one of these characters\n                       |               # ...or...\n                       u               # a u\n                       [0-9a-fA-F]{4}  # and four hex digits\n                     )\n                   )",
+					"name": "constant.character.escape.sjson"
+				},
+				{
+					"match": "\\\\.",
+					"name": "invalid.illegal.unrecognized-string-escape.sjson"
+				},
+				{
+					"include": "source.hlsl"
+				}
+			]
+		},
+		"value": {
+			"patterns": [
+				{
+					"include": "#constant"
+				},
+				{
+					"include": "#number"
+				},
+				{
+					"include": "#string"
+				},
+				{
+					"include": "#array"
+				},
+				{
+					"include": "#object"
+				},
+				{
+					"include": "#comments"
+				}
+			]
+		},
+		"directive-condition": {
+			"patterns": [
+				{
+					"match": "\\(",
+					"name": "punctuation.parens.begin.preprocessor.fatshark"
+				},
+				{
+					"match": "\\)",
+					"name": "punctuation.parens.end.preprocessor.fatshark"
+				},
+				{
+					"match": "\\b(?:and|or|not)\\b",
+					"name": "keyword.operator.logical.preprocessor.fatshark"
+				},
+				{
+					"match": "\\b(?:win32|xb1|ps4)\\b",
+					"name": "constant.language.preprocessor.fatshark"
+				},
+				{
+					"match": "\\b[A-Z]\\w*\\b",
+					"name": "entity.name.function.preprocessor.fatshark"
+				}
+			],
+			"name": "meta.preprocessor.fatshark"
+		}
+	}
+}

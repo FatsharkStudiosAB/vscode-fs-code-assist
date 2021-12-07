@@ -10,7 +10,7 @@ import { join } from 'path';
 import { ConnectionTargetsNodeProvider, ConnectionTargetTreeItem } from './connection-targets-node-provider';
 
 export function getToolchainPath(toolchain: string) {
-	const config = vscode.workspace.getConfiguration("stingray_lua");
+	const config = vscode.workspace.getConfiguration("StingrayLua");
 	const toolchainRoot = <string|undefined>config.get("toolchainPath") || "c:/BitSquidBinaries";
 
 	const path = join(toolchainRoot, toolchain);
@@ -26,7 +26,7 @@ export function activate(context: vscode.ExtensionContext) {
 			location: vscode.ProgressLocation.Notification
 		}, (progress, token) => new Promise<void>((resolve, reject) => {
 			const id = uuid4();
-			const config = vscode.workspace.getConfiguration("stingray_lua");
+			const config = vscode.workspace.getConfiguration("StingrayLua");
 			const toolchainRootPath = <string|undefined>config.get("toolchainPath");
 			const toolchainName = <string|undefined>config.get("toolchainName");
 			const platform = <string|undefined>config.get("platform") || "win32";
@@ -192,7 +192,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 		let folder = vscode.workspace.workspaceFolders;
 		if (folder && connection) {
-			const config = vscode.workspace.getConfiguration("stingray_lua");
+			const config = vscode.workspace.getConfiguration("StingrayLua");
 			const toolchain = <string|undefined>config.get("toolchainName");
 			if (!toolchain) {
 				return;

@@ -137,6 +137,11 @@
           "when": "view == fs-code-assist-clients"
         },
         {
+          "command": "fatshark-code-assist.stingrayConnect",
+          "group": "navigation",
+          "when": "view == fs-code-assist-targets"
+        },
+        {
           "command": "fatshark-code-assist.refreshTargets",
           "group": "navigation",
           "when": "view == fs-code-assist-targets"
@@ -172,25 +177,25 @@
     },
     "configuration": {
       "type": "object",
-      "title": "Stingray configuration",
+      "title": "Fatshark Code Assist",
       "properties": {
-        "stingray_lua.toolchainPath": {
+        "StingrayLua.toolchainPath": {
           "type": "string",
           "scope": "application",
           "default": "C:/BitSquidBinaries",
           "description": "Toolchain name, e.g. 'C:/BitSquidBinaries'"
         },
-        "stingray_lua.toolchainName": {
+        "StingrayLua.toolchainName": {
           "type": "string",
           "scope": "application",
           "default": "vermintide2",
           "description": "Toolchain name, e.g. 'vermintide2'"
         },
-        "stingray_lua.platform": {
+        "StingrayLua.platform": {
           "type": "string",
           "scope": "application",
           "default": "win32",
-          "description": "Platform name, e.g. 'win32'"
+          "description": "Platform name, e.g. 'win32', `xb1`, `ps4`"
         }
       }
     },
@@ -212,57 +217,66 @@
         "configuration": "./language-configuration-crashlog.json"
       },
       {
+        "id": "lua",
+        "aliases": [
+          "Stingray Lua"
+        ],
+        "extensions": [
+          ".lua"
+        ]
+      },
+      {
         "id": "sjson",
         "aliases": [
-          "sjson"
+          "Simplified JSON"
         ],
         "filenames": [
           "settings.ini"
         ],
         "extensions": [
-          ".sjson",
-          ".config",
-          ".material",
-          ".shader",
-          ".shader_node",
-          ".shader_source",
-          ".render_config",
-          ".particles",
-          ".particle_editor",
           ".bsi",
-          ".texture",
-          ".font",
-          ".unit",
-          ".unit_anim",
+          ".component",
+          ".config",
           ".dcc_asset",
+          ".decals",
+          ".entity",
+          ".flow_editor",
+          ".flow",
+          ".font",
           ".import_options",
-          ".physics",
           ".landscape",
           ".level",
+          ".material",
+          ".mouse_cursor",
+          ".network_config",
+          ".package",
+          ".particle_editor",
+          ".particles",
+          ".physics_properties",
+          ".physics",
+          ".plugin",
+          ".render_config",
+          ".script_flow_nodes",
+          ".shader_node",
+          ".shader_source",
+          ".shader",
+          ".shading_environment_template",
+          ".shading_environment",
+          ".sjson",
+          ".sound_environment",
+          ".stingray_layout",
+          ".stingray_plugin",
+          ".stingray_project",
+          ".strings",
+          ".surface_properties",
+          ".texture_category",
+          ".texture",
           ".timpani_bank",
           ".timpani_master",
-          ".mouse_cursor",
-          ".surface_properties",
-          ".physics_properties",
-          ".decals",
-          ".script_flow_nodes",
-          ".flow",
-          ".flow_editor",
-          ".network_config",
-          ".strings",
-          ".volume_type",
-          ".package",
-          ".entity",
-          ".component",
           ".type",
-          ".sound_environment",
-          ".texture_category",
-          ".stingray_project",
-          ".stingray_plugin",
-          ".stingray_layout",
-          ".plugin",
-          ".shading_environment_template",
-          ".shading_environment"
+          ".unit_anim",
+          ".unit",
+          ".volume_type"
         ],
         "configuration": "./language-configuration.json"
       }
@@ -276,19 +290,17 @@
       {
         "language": "crashlog",
         "scopeName": "source.crashlog",
-        "path": "./syntaxes/crashlog.tmLanguage.json"
+        "path": "./syntaxes/crashlog.json"
       },
       {
-        "injectTo": [
-          "source.lua"
-        ],
-        "scopeName": "fatshark-preprocessor.injection",
-        "path": "./syntaxes/injection.json"
+        "language": "lua",
+        "scopeName": "source.fatshark.lua",
+        "path": "./syntaxes/lua-stingray.json"
       },
       {
         "language": "sjson",
         "scopeName": "source.sjson",
-        "path": "./syntaxes/SJSON.tmLanguage"
+        "path": "./syntaxes/sjson.json"
       }
     ],
     "viewsContainers": {

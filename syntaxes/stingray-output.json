@@ -57,8 +57,15 @@
 					]
 				},
 				{
-					"match": "\\b\\w+/[\\w/]+\\.lua(?::\\d+)\\b",
-					"name": "entity.name.filename.resource-path.stingray-output"
+					"match": "\\b(\\w+/[\\w/]+\\.lua)(?::(\\d+))?\\b",
+					"captures": {
+						"1": {
+							"name": "entity.name.filename.find-in-files.stingray-output"
+						},
+						"2": {
+							"name": "constant.numeric.line-number.find-in-files.stingray-output"
+						}
+					}
 				},
 				{
 					"match": "\\b\\w+/[\\w/]+\\b",
