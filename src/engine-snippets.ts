@@ -4,29 +4,19 @@
  */
 export const luaHelpers = [
     `
-    if not to_console_string then
-        function to_console_string(x)
-            local function comp(a,b)
-                if  type(a) ~= type(b) then
-                    return type(a) < type(b)
-                else
-                    return a < b
-                end
-            end
-
-            if type(x) == 'table' then
-                return string.format('%s', x)
-            elseif type(x) == 'function' then
-                local info = debug.getinfo(x)
-                if info.what == 'C' then
-                    return 'C function'
-                else
-                    return 'Lua function, ' .. info.short_src .. ':' .. info.linedefined
-                end
-                return to_console_string(info)
+    function to_console_string(x)
+        if type(x) == 'table' then
+            return string.format('%s', x)
+        elseif type(x) == 'function' then
+            local info = debug.getinfo(x)
+            if info.what == 'C' then
+                return 'C function'
             else
-                return tostring(x)
+                return 'Lua function, ' .. info.short_src .. ':' .. info.linedefined
             end
+            return to_console_string(info)
+        else
+            return tostring(x)
         end
     end
     `,
