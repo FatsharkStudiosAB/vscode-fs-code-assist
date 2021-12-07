@@ -1,4 +1,4 @@
-import { Color, ColorInformation, ColorPresentation, DecorationRangeBehavior, Disposable, DocumentLink, DocumentSymbol, FoldingRange, FoldingRangeKind, languages, Range, SymbolKind, Uri, window, workspace } from "vscode";
+import { Color, ColorInformation, ColorPresentation, CompletionItem, CompletionItemKind, DecorationRangeBehavior, Disposable, DocumentLink, DocumentSymbol, FoldingRange, FoldingRangeKind, languages, Range, SignatureHelp, SignatureInformation, SymbolKind, TextEdit, Uri, window, workspace } from "vscode";
 
 const LANGUAGE_SELECTOR = "lua";
 
@@ -53,9 +53,16 @@ export function activate() {
 		}
 	});
 
+	type MethodData = {
+		name: string;
+		args: string[];
+	};
+
+	const methodList: MethodData[] = [];
+
 	const CLASS_REGEX = /^(\w+)\s*=\s*class/;
 	const OBJECT_REGEX = /^(\w+)\s*=\s*\1/;
-	const METHOD_REGEX = /^function\s+(\w+)[:.]([\w_]+)\(/;
+	const METHOD_REGEX = /^function\s+(\w+)[:.]([\w_]+)\(([^)]+)\)/;
 	const FUNCTION_REGEX = /^function\s+([\w_]+)\(/;
 	const ENUM_REGEX = /([\w_]+)\s*=\s*table\.enum\(/;
 	const CONST_REGEX = /^(?:local\s+)?([A-Z_]+)\s*=/;
@@ -65,6 +72,8 @@ export function activate() {
 			const symbols = [];
 			const symbolLookup = new Map<string, DocumentSymbol>();
 
+			methodList.length = 0; // Clear the array, JavaScript style.
+
 			for (let i=0; i < document.lineCount; ++i) {
 				const line = document.lineAt(i);
 				const text = line.text;
@@ -73,7 +82,7 @@ export function activate() {
 
 				const methodMatches = METHOD_REGEX.exec(text);
 				if (methodMatches) {
-					const [_, mClass, mMethod] = methodMatches;
+					const [_, mClass, mMethod, mArgs] = methodMatches;
 					const kind = (mMethod === "init") ? SymbolKind.Constructor : SymbolKind.Method;					
 					const symbol = new DocumentSymbol(mMethod, mClass, kind, range, selectionRange);
 					const parent = symbolLookup.get(mClass);
@@ -82,6 +91,10 @@ export function activate() {
 					} else {
 						symbols.push(symbol);
 					}
+					methodList.push({
+						name: mMethod,
+						args: mArgs.split(/\s*,\s*/),
+					});
 					continue;
 				}
 
@@ -167,6 +180,40 @@ export function activate() {
 			return colors;
 		}
 	});
+
+	languages.registerCompletionItemProvider(LANGUAGE_SELECTOR, {
+		provideCompletionItems(document, position, token, context) {
+			const range = new Range(position.line, position.character-5, position.line, position.character-1);
+			const word = document.getText(range);
+			if (word !== "self") {
+				return null;
+			}
+			return methodList.map((method) => {
+				const item = new CompletionItem(method.name, CompletionItemKind.Function);
+				item.detail = "(method)";
+				item.documentation = "Tell me if you can see this.";
+				return item;
+			});
+		}
+	}, ":");
+	/*
+	languages.registerSignatureHelpProvider(LANGUAGE_SELECTOR, {
+		provideSignatureHelp(document, position, token, context) {
+			const text = document.lineAt(position).text;
+			const start = text.lastIndexOf("self:", position.character);
+			if (start === -1) {
+				return null;
+			}
+			return {
+				signatures: [
+					new SignatureInformation("label", "documentation")
+				],
+				activeSignature: 0,
+				activeParameter: 0,
+			};
+		}
+	}, "(,");
+	*/
 
 	const LINK_REGEX = /@?([\w_/]+\.lua)(?::(\d+))?/d;
 	languages.registerDocumentLinkProvider("stingray-output", {
