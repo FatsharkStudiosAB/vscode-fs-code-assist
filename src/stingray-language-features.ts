@@ -7,9 +7,10 @@ const disposables: Disposable[] = [];
 export function activate() {
 	const IF_BEGIN_REGEX = /^\s*--IF_BEGIN/;
 	const IF_END_REGEX = /^\s*--IF_END/;
+	const IF_LINE_REGEX = /--IF_LINE/;
 
 	const preprocessorDimDecoration = window.createTextEditorDecorationType({
-		opacity: "0.55",
+		opacity: "0.75",
 		//backgroundColor: backgroundColor,
 		//color: color,
 		rangeBehavior: DecorationRangeBehavior.OpenOpen
@@ -30,7 +31,12 @@ export function activate() {
 				} else if (IF_END_REGEX.test(text)) {
 					const start = <number> regionStack.pop();
 					foldingRanges.push(new FoldingRange(start, i-1, FoldingRangeKind.Region));
-					decoratorRanges.push(new Range(start+1, 1, i, 1));
+					decoratorRanges.push(new Range(start+1, 0, i, 0));
+				} else if (regionStack.length === 0) {
+					const ifLineBegin = text.indexOf("--IF_LINE");
+					if (ifLineBegin !== -1) {
+						decoratorRanges.push(new Range(i, 0, i, ifLineBegin));
+					}
 				}
 			}
 
@@ -226,3 +232,10 @@ export function activate() {
 export function deactivate() {
 	disposables.forEach((d) => d.dispose());
 }
+
+/* Putting these links here as a dirty scratchpad:
+https://regex101.com/
+https://github.com/winlibs/oniguruma/blob/master/doc/RE
+https://www.regular-expressions.info/lookaround.html
+https://github.com/microsoft/vscode/blob/1e810cafb7461ca077c705499408ca838524c014/extensions/theme-monokai/themes/monokai-color-theme.json
+*/

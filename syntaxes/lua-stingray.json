@@ -6,7 +6,7 @@
 	"scopeName": "source.fatshark.lua",
 	"patterns": [
 		{
-			"begin": "\\b(function)\\s*(\\b\\w+(?:[.:]\\w+)*\\s*)(\\()",
+			"begin": "\\b(function)\\s*(\\b\\w+(?:[.:]\\w+)*\\s*)?(\\()",
 			"beginCaptures": {
 				"1": {
 					"name": "keyword.control.function.fatshark.lua"
