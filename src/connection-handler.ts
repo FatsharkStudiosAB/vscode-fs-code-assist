@@ -7,7 +7,7 @@ import { ConnectedClientsNodeProvider } from './connected-clients-node-provider'
 import { StingrayConnection } from "./stingray-connection";
 import { getTimestamp } from './utils';
 
-export const MAX_CONNECTIONS = 16;
+export const MAX_CONNECTIONS = 4;
 
 export class ConnectionHandler {
 	_compiler?: StingrayConnection;
@@ -29,7 +29,7 @@ export class ConnectionHandler {
 	}
 
 	getCompiler() {
-		if (!this._compiler || this._compiler.isClosed()) {
+		if (!this._compiler || this._compiler.isClosed) {
 			this._compiler = new StingrayConnection(14032);
 			this._addOutputChannel("Stingray Compiler", this._compiler);
 		}
@@ -38,7 +38,7 @@ export class ConnectionHandler {
 
     getGame(port:number, ip?:string) {
         let game = this._game.get(port);
-        if (!game || game.isClosed()) {
+        if (!game || game.isClosed) {
             game = new StingrayConnection(port, ip);
             this._game.set(port, game);
             this._addOutputChannel(`Stingray (${port})`, game);
@@ -55,8 +55,8 @@ export class ConnectionHandler {
 
 	getAllGames() {
 		let allGameConnections = [];
-		for (let [port, game] of this._game) {
-			if (!game.isClosed()) {
+		for (let [_, game] of this._game) {
+			if (!game.isClosed) {
 				allGameConnections.push(game);
 			}
 		}

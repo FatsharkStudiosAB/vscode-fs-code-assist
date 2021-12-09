@@ -22,8 +22,8 @@ export class ConnectedClientsNodeProvider implements vscode.TreeDataProvider<Con
         let treeItems: ConnectedClientTreeItem[] = [];
         openConnections.forEach(connection => {
             let newItem = new ConnectedClientTreeItem( 
-                connection.getName(), 
-                connectionHandler.getOutputForConnection(connection),
+                connection.name,
+                connectionHandler.getOutputForConnection(connection) as vscode.OutputChannel,
                 connection );
             treeItems.push( newItem ); 
         });
@@ -34,8 +34,8 @@ export class ConnectedClientsNodeProvider implements vscode.TreeDataProvider<Con
 export class ConnectedClientTreeItem extends vscode.TreeItem {
 	constructor(
 		public readonly label: string,
-        private readonly connectionOutput?: vscode.OutputChannel,
-        public readonly connection?: StingrayConnection
+        private readonly connectionOutput: vscode.OutputChannel,
+        public readonly connection: StingrayConnection
 	) {
 		super(label, vscode.TreeItemCollapsibleState.None);
 	}
@@ -47,4 +47,5 @@ export class ConnectedClientTreeItem extends vscode.TreeItem {
     }
 
 	contextValue = 'connected-client';
+    iconPath = new vscode.ThemeIcon("debug-console");
 }

@@ -1,7 +1,6 @@
 // implements tree view UI for connected clients
 import { join } from 'path';
 import * as vscode from 'vscode';
-import { } from './extension';
 import { getToolchainSettings, getToolchainSettingsPath } from './utils';
 
 export class ConnectionTargetsNodeProvider implements vscode.TreeDataProvider<ConnectionTargetTreeItem> {
@@ -34,6 +33,7 @@ export class ConnectionTargetsNodeProvider implements vscode.TreeDataProvider<Co
         
         let tcSettings = getToolchainSettings(tcPath);
         let treeItems: ConnectionTargetTreeItem[] = [];
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         tcSettings.Targets.forEach((target: { Name: string; Platform: any; Ip: any; Port: any; }) => {
             let newItem = new ConnectionTargetTreeItem( target.Name, target.Platform, target.Ip, target.Port );
             treeItems.push( newItem ); 

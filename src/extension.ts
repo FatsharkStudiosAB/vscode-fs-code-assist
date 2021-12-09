@@ -1,7 +1,6 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import {readFileSync, existsSync as fileExists} from 'fs';
 import { ConnectedClientsNodeProvider, ConnectedClientTreeItem } from './connected-clients-node-provider';
 import { connectionHandler, MAX_CONNECTIONS } from './connection-handler';
 import { getCurrentToolchainSettings, getToolchainSettingsPath, uuid4 } from './utils';
@@ -19,7 +18,15 @@ export function getToolchainPath(toolchain: string) {
 
 let currentConnectedTarget:string|null = null;
 export function activate(context: vscode.ExtensionContext) {
-	languageFeatures.activate();
+	languageFeatures.activate(context);
+
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayReloadSources', () => {
+		connectionHandler.getAllGames().forEach(game => {
+			game.sendCommand("refresh");
+			game.sendCommand("game", "unpause");
+		});
+		vscode.window.setStatusBarMessage("Sources reloaded.", 3000);
+	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayRecompile', () => {
 		vscode.window.withProgress({
@@ -51,10 +58,7 @@ export function activate(context: vscode.ExtensionContext) {
 			compiler.onDidReceiveData.add(function onData(data: any) {
 				if (data.id === id && data.finished) {
 					if (data.status === "success") {
-						connectionHandler.getAllGames().forEach(game => {
-							game.sendCommand("refresh");
-							game.sendCommand("game", "unpause");
-						});
+						vscode.commands.executeCommand('fatshark-code-assist.stingrayRefresh');
 						compiler.onDidReceiveData.remove(onData);
 						resolve();
 					} else {
@@ -74,6 +78,7 @@ export function activate(context: vscode.ExtensionContext) {
 					"id": id,
 					"type" : "cancel",
 				});
+				reject();
 			});
 
 			progress.report({ increment: 0, message: "Stingray Compile: Starting..." });
@@ -109,7 +114,11 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayDisconnect', () => {
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayDisconnect', (element: ConnectedClientTreeItem) => {
+		element.connection?.close();
+	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayDisconnectAll', () => {
 		connectionHandler.closeAll();
 	}));
 
@@ -186,9 +195,8 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.attachDebugger', (element) => {
-		const connectedClientTreeItem = element as ConnectedClientTreeItem;
-		const connection = connectedClientTreeItem.connection;
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.attachDebugger', (element: ConnectedClientTreeItem) => {
+		const connection = element.connection;
 
 		let folder = vscode.workspace.workspaceFolders;
 		if (folder && connection) {
@@ -202,16 +210,24 @@ export function activate(context: vscode.ExtensionContext) {
 			const attachArgs = {
 				"type": "stingray_lua",
 				"request": "attach",
-				"name": `Vermintide 2 ${connectedClientTreeItem.connection.getName()}`,
+				"name": `Vermintide 2 ${connection.name}`,
 				"toolchain": tcPath,
-				"ip" : connectedClientTreeItem.connection.ip,
-				"port" : connectedClientTreeItem.connection.port,
+				"ip" : connection.ip,
+				"port" : connection.port,
 			};
 
 			const sourceDir = folder[0];
 			vscode.debug.startDebugging(sourceDir, attachArgs);
 		}
 	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.detachDebugger', (element: ConnectedClientTreeItem) => {
+		const debugSession = vscode.debug.activeDebugSession; // element.debugSession
+		if (debugSession) {
+			vscode.debug.stopDebugging(debugSession);
+		}
+	}));
+
 	
 	// connection targets
 	let connectTargetsNodeProvider = new ConnectionTargetsNodeProvider();
@@ -229,7 +245,7 @@ export function activate(context: vscode.ExtensionContext) {
 	let connectedClientsTreeView = vscode.window.createTreeView("fs-code-assist-clients", {
 		treeDataProvider: connectedClientsNodeProvider, 
 		showCollapseAll: false, 
-		canSelectMany: false
+		canSelectMany: true
 	});
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist._refreshConnectedClients', () => {
@@ -246,5 +262,4 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
 	connectionHandler.closeAll();
-	languageFeatures.deactivate();
 }

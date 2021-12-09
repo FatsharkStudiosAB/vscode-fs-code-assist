@@ -1,47 +1,45 @@
-import * as net from 'net';
-import { TextEncoder } from 'util';
+import { Socket } from 'net';
 import * as utils from './utils';
-import { Multicast } from './utils';
-
-export const DEFAULT_IP = '127.0.0.1';
 
 enum MessageType { // Must be the same as in engine.
-	Json = 0,
-	JsonWithBinary = 1,
+	json = 0,
+	jsonWithBinary = 1,
 }
 
 export class StingrayConnection {
-	_socket : net.Socket;
-	_ready : boolean = false;
-	_closed : boolean = false;
-	_error : boolean = false;
-	_name : string;
-    readonly ip : string;
-    readonly port : number;
+	// Internal state.
+	private _socket : Socket;
+	private _messageHeader = Buffer.alloc(8);
+	private _ready : boolean = false;
+	private _closed : boolean = false;
+	private _error : boolean = false;
 
-	private _encoder = new TextEncoder();
+	// Public properties & read-only accessors.
+	readonly name : string;
+	get isReady() { return this._ready; }
+	get isClosed() { return this._closed; }
+	get hadError() { return this._error; }
+	readonly onDidConnect = new utils.Multicast();
+	readonly onDidDisconnect = new utils.Multicast();
+	readonly onDidReceiveData = new utils.Multicast();
 
-	onDidConnect = new Multicast();
-	onDidDisconnect = new Multicast();
-	onDidReceiveData = new Multicast();
+	constructor(readonly port: number, readonly ip: string = '127.0.0.1') {
+		this.port = port;
+		this.name = `Stingray (${this.ip}:${port})`;
 
-	constructor(port: number, ip?: string) {
-		this._name = `Stingray (${ip||DEFAULT_IP}:${port})`;
-        this.ip = ip || DEFAULT_IP;
-        this.port = port;
-
-		this._socket = new net.Socket();
+		this._socket = new Socket();
 		this._socket.on("close", this._onClose.bind(this));
 		this._socket.on("connect", this._onConnect.bind(this));
-		this._socket.on("data", this._onData.bind(this));
-		this._connect(port, ip);
+		this._socket.connect(this.port, this.ip);
+		this._socket.pause(); // Pull mode.
+		this._pumpMessages();
 	}
 
 	close() {
 		this._socket.destroy();
 	}
 
-	sendCommand(command:string, ...args:any) {
+	sendCommand(command: string, ...args: any) {
 		let guid = utils.uuid4();
 		this._send({
 			id : guid,
@@ -52,50 +50,31 @@ export class StingrayConnection {
 		return guid;
 	}
 
-	sendDebuggerCommand(command: string, data?:any) {
+	sendDebuggerCommand(command: string, data?: any) {
 		this._send(Object.assign({
 			type: "lua_debugger",
 			command: command
 		}, data));
 	}
 
-	sendJSON(object:any) {
+	sendJSON(object: any) {
 		this._send(object);
 	}
 
-	sendLua(text:string) {
+	sendLua(text: string) {
 		this._send({
 			type : "script",
 			script: text
 		});
 	}
 
-	isReady() { return this._ready; }
-	isClosed() { return this._closed; }
-	hadError() { return this._error; }
-	getName() { return this._name; }
-
-	_connect(port:number, ip?:string) {
-		this._socket.connect(port, ip || DEFAULT_IP);
-	}
-
 	_send(data: any) {
 		const payload = JSON.stringify(data);
 		const length = Buffer.byteLength(payload, "utf8");
-		const buffer = new Uint8Array(8 + length);
-
-		buffer[0] = 0;
-		buffer[1] = 0;
-		buffer[2] = 0;
-		buffer[3] = 0;
-
-		buffer[4] = 0xFF & (length >> 24);
-		buffer[5] = 0xFF & (length >> 16);
-		buffer[6] = 0xFF & (length >> 8);
-		buffer[7] = 0xFF & length;
-
-		this._encoder.encodeInto(payload, buffer.subarray(8));
-		this._socket.write(buffer);
+		this._messageHeader.writeInt32BE(MessageType.json, 0);
+		this._messageHeader.writeInt32BE(length, 4);
+		this._socket.write(this._messageHeader);
+		this._socket.write(payload);
 	}
 
 	_onConnect() {
@@ -110,41 +89,56 @@ export class StingrayConnection {
 		this.onDidDisconnect.fire(hadError);
 	}
 
-	_onData(data:Buffer) {
-		for (let bufferIdx = 0; bufferIdx < data.length ;) {
-			// Parse message header.
-			const messageType = data.readInt32BE(bufferIdx);
-			bufferIdx += 4;
-			const messageLength = data.readInt32BE(bufferIdx);
-			bufferIdx += 4;
-
-			let jsonLength = messageLength;
-
-			let binaryOffset = 0;
-			if (messageType === MessageType.JsonWithBinary) {
-				binaryOffset = data.readInt32BE(bufferIdx) - 4; // Subtract itself.
-				bufferIdx += 4;
-				jsonLength = binaryOffset;
+	async _readBytes(n: number) : Promise<Buffer> {
+		return new Promise((resolve, reject) => {
+			const socket = this._socket;
+			if (!socket.readable) {
+				return reject();
 			}
+			socket.once("end", () => reject());
 
-			// Read the JSON part.
-			let json = null;
-			if (messageType === MessageType.Json || messageType === MessageType.JsonWithBinary) {
-				const jsonString = data.toString("utf8", bufferIdx, bufferIdx+jsonLength).replace(/\0+$/g,"");
-				json = JSON.parse(jsonString);
+			socket.on("readable", function onReadable() {
+				if (socket.readableLength >= n) {
+					resolve(socket.read(n));
+					socket.off("readable", onReadable);
+				}
+			});
+		});
+	}
+
+	async _pumpMessages() {
+		while (true) {
+			// Read and process the header.
+			const header = await this._readBytes(8);
+			const messageType = header.readUInt32BE(0) as MessageType;
+			const messageLength = header.readUInt32BE(4);
+
+			// Calculate the length of the JSON and binary payloads.
+			let jsonLength;
+			let binaryLength;
+			if (messageType === MessageType.json) {
+				jsonLength = messageLength;
+				binaryLength = 0;
+			} else if (messageType === MessageType.jsonWithBinary) {
+				let binaryOffset = (await this._readBytes(4)).readUInt32BE(0);
+				jsonLength = binaryOffset - 4;
+				binaryLength = messageLength - binaryOffset;
 			} else {
-				throw new Error("PANIC: Unknown messageType at socket " + JSON.stringify(this._socket.address()));
+				throw new Error(`Unknown messageType ${messageType} at socket ${this._socket.remoteAddress}`);
 			}
 
-			// Read the binary part.
-			let binary = undefined;
-			if (binaryOffset) {
-				binary = data.subarray(bufferIdx + binaryOffset, messageLength - binaryOffset -8);
+			// Read the JSON.
+			const jsonBuffer = await this._readBytes(jsonLength);
+			const json = JSON.parse(jsonBuffer.toString("utf8").replace(/\0+$/g, ""));
+			// For some reason, messages can include trailing garbage. We clean it up.
+
+			// Read the binary.
+			let binary;
+			if (binaryLength) {
+				binary = await this._readBytes(binaryLength);
 			}
 
-			this.onDidReceiveData.fire(json); // TODO: Pass in binary data too.
-
-			bufferIdx += messageLength;
+			this.onDidReceiveData.fire(json, binary);
 		}
 	}
 }

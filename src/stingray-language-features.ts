@@ -1,10 +1,10 @@
-import { Color, ColorInformation, ColorPresentation, CompletionItem, CompletionItemKind, DecorationRangeBehavior, Disposable, DocumentLink, DocumentSymbol, FoldingRange, FoldingRangeKind, languages, Range, SignatureHelp, SignatureInformation, SymbolKind, TextEdit, Uri, window, workspace } from "vscode";
+import { Color, ColorInformation, ColorPresentation, CompletionItem, CompletionItemKind, DecorationRangeBehavior, Disposable, DocumentLink, DocumentSymbol, ExtensionContext, FoldingRange, FoldingRangeKind, languages, Range, SignatureHelp, SignatureInformation, SymbolKind, TextEdit, Uri, window, workspace } from "vscode";
 
 const LANGUAGE_SELECTOR = "lua";
 
 const disposables: Disposable[] = [];
 
-export function activate() {
+export function activate(context: ExtensionContext) {
 	const IF_BEGIN_REGEX = /^\s*--IF_BEGIN/;
 	const IF_END_REGEX = /^\s*--IF_END/;
 	const IF_LINE_REGEX = /--IF_LINE/;
@@ -16,7 +16,7 @@ export function activate() {
 		rangeBehavior: DecorationRangeBehavior.OpenOpen
 	});
 
-	languages.registerFoldingRangeProvider(LANGUAGE_SELECTOR, {
+	context.subscriptions.push(languages.registerFoldingRangeProvider(LANGUAGE_SELECTOR, {
 		provideFoldingRanges(document, context, token) {
 			const foldingRanges = [];
 			const decoratorRanges = [];
@@ -51,7 +51,7 @@ export function activate() {
 
 			return foldingRanges;
 		}
-	});
+	}));
 
 	type MethodData = {
 		name: string;
@@ -67,7 +67,7 @@ export function activate() {
 	const ENUM_REGEX = /([\w_]+)\s*=\s*table\.enum\(/;
 	const CONST_REGEX = /^(?:local\s+)?([A-Z_]+)\s*=/;
 	const LOCAL_REGEX = /^local(?:\s+function)?\s+([\w_]+)\b/;
-	languages.registerDocumentSymbolProvider(LANGUAGE_SELECTOR, {
+	context.subscriptions.push(languages.registerDocumentSymbolProvider(LANGUAGE_SELECTOR, {
 		provideDocumentSymbols(document, token) {
 			const symbols = [];
 			const symbolLookup = new Map<string, DocumentSymbol>();
@@ -146,10 +146,10 @@ export function activate() {
 			}
 			return symbols;
 		}
-	});
+	}));
 
 	const COLOR_REGEX = /\{\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\}/d;
-	languages.registerColorProvider(LANGUAGE_SELECTOR, {
+	context.subscriptions.push(languages.registerColorProvider(LANGUAGE_SELECTOR, {
 		provideColorPresentations(color, context, token) {
 			const cA = (255*color.alpha).toFixed(0);
 			const cR = (255*color.red).toFixed(0);
@@ -179,9 +179,9 @@ export function activate() {
 
 			return colors;
 		}
-	});
+	}));
 
-	languages.registerCompletionItemProvider(LANGUAGE_SELECTOR, {
+	context.subscriptions.push(languages.registerCompletionItemProvider(LANGUAGE_SELECTOR, {
 		provideCompletionItems(document, position, token, context) {
 			const range = new Range(position.line, position.character-5, position.line, position.character-1);
 			const word = document.getText(range);
@@ -195,7 +195,7 @@ export function activate() {
 				return item;
 			});
 		}
-	}, ":");
+	}, ":"));
 	/*
 	languages.registerSignatureHelpProvider(LANGUAGE_SELECTOR, {
 		provideSignatureHelp(document, position, token, context) {
@@ -216,7 +216,7 @@ export function activate() {
 	*/
 
 	const LINK_REGEX = /@?([\w_/]+\.lua)(?::(\d+))?/d;
-	languages.registerDocumentLinkProvider("stingray-output", {
+	context.subscriptions.push(languages.registerDocumentLinkProvider("stingray-output", {
 		provideDocumentLinks(document, token) {
 			const links: DocumentLink[] = [];
 
@@ -243,7 +243,7 @@ export function activate() {
 
 			return links;
 		}
-	});
+	}));
 
 	/*
 	const SEMANTIC_TOKENS_LEGEND = {
@@ -274,10 +274,6 @@ export function activate() {
 		}
 	}, SEMANTIC_TOKENS_LEGEND);
 	//*/
-}
-
-export function deactivate() {
-	disposables.forEach((d) => d.dispose());
 }
 
 /* Putting these links here as a dirty scratchpad:
