@@ -37,31 +37,9 @@
     "commands": [
       {
         "command": "fatshark-code-assist.stingrayConnect",
-        "title": "Connect to all",
+        "title": "Connect All",
         "category": "Stingray",
         "icon": "$(run-all)"
-      },
-      {
-        "command": "fatshark-code-assist.stingrayRecompile",
-        "title": "Recompile",
-        "category": "Stingray",
-        "icon": "$(server-environment)"
-      },
-      {
-        "command": "fatshark-code-assist.stingrayReloadSources",
-        "title": "Reload Sources",
-        "category": "Stingray",
-        "icon": "$(repo-sync)"
-      },
-      {
-        "command": "fatshark-code-assist.executeSelection",
-        "title": "Execute Selection",
-        "category": "Stingray"
-      },
-      {
-        "command": "fatshark-code-assist.executeFile",
-        "title": "Execute File",
-        "category": "Stingray"
       },
       {
         "command": "fatshark-code-assist.stingrayDisconnect",
@@ -76,13 +54,35 @@
         "icon": "$(close-all)"
       },
       {
-        "command": "fatshark-code-assist.stingrayCommand",
-        "title": "Command",
-        "category": "Stingray"
+        "command": "fatshark-code-assist.stingrayRecompile",
+        "title": "Recompile and Reload Sources",
+        "category": "Stingray",
+        "icon": "$(server-environment)"
+      },
+      {
+        "command": "fatshark-code-assist.stingrayReloadSources",
+        "title": "Reload Sources",
+        "category": "Stingray",
+        "icon": "$(repo-sync)"
       },
       {
         "command": "fatshark-code-assist.stingrayLua",
         "title": "Execute Lua",
+        "category": "Stingray"
+      },
+      {
+        "command": "fatshark-code-assist.executeSelection",
+        "title": "Execute Selection",
+        "category": "Stingray"
+      },
+      {
+        "command": "fatshark-code-assist.executeFile",
+        "title": "Execute File",
+        "category": "Stingray"
+      },
+      {
+        "command": "fatshark-code-assist.stingrayCommand",
+        "title": "Command",
         "category": "Stingray"
       },
       {
@@ -143,6 +143,10 @@
         },
         {
           "command": "fatshark-code-assist.refreshTargets",
+          "when": "false"
+        },
+        {
+          "command": "fatshark-code-assist.stingrayDisconnect",
           "when": "false"
         }
       ],

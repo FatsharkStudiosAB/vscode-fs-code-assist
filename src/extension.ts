@@ -58,7 +58,7 @@ export function activate(context: vscode.ExtensionContext) {
 			compiler.onDidReceiveData.add(function onData(data: any) {
 				if (data.id === id && data.finished) {
 					if (data.status === "success") {
-						vscode.commands.executeCommand('fatshark-code-assist.stingrayRefresh');
+						vscode.commands.executeCommand('fatshark-code-assist.stingrayReloadSources');
 						compiler.onDidReceiveData.remove(onData);
 						resolve();
 					} else {
