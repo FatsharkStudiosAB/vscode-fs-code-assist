@@ -46,7 +46,7 @@ export function activate(context: ExtensionContext) {
 			}
 
 			if (regionStack.length !== 0) {
-				//console.log("Unbalanced preprocessor directives!");
+				//console.log('Unbalanced preprocessor directives!');
 			}
 
 			return foldingRanges;

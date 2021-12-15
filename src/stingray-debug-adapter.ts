@@ -1,4 +1,4 @@
-import { DebugSession, Breakpoint, Source, OutputEvent, InitializedEvent, StoppedEvent, Thread, BreakpointEvent, StackFrame, Scope, Variable } from 'vscode-debugadapter';
+import { LoggingDebugSession, DebugSession, Breakpoint, Source, OutputEvent, InitializedEvent, StoppedEvent, Thread, BreakpointEvent, StackFrame, Scope, Variable } from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { StingrayConnection } from './stingray-connection';
 import { getCurrentToolchainSettings, getToolchainSettingsPath } from './utils';
@@ -37,6 +37,15 @@ interface StingrayTableContext {
 interface StingrayCommandRequset {
     id: number,
     promise: Promise<any>
+}
+
+interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
+	/** An absolute path to the "program" to debug. */
+	program: string;
+	/** Automatically stop target after launch. If not specified, target does not stop. */
+	stopOnEntry?: boolean;
+	/** enable logging the Debug Adapter Protocol */
+	trace?: boolean;
 }
 
 const THREAD_ID = 1;
@@ -79,10 +88,7 @@ class StingrayDebugSession extends DebugSession {
     }
 
     protected initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
-        // Set supported features
-        if (!response.body) {
-            return;
-        }
+		response.body = response.body || {};
 
         response.body.supportsEvaluateForHovers = true;
         response.body.supportsConfigurationDoneRequest = true;
@@ -97,9 +103,21 @@ class StingrayDebugSession extends DebugSession {
         ];
 
         this.sendResponse(response);
+		this.sendEvent(new InitializedEvent());
     }
 
     protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
+		const { context } = args;
+		if (!context) {
+			return;
+		}
+
+		if (context === 'hover') {
+			this.log(`${context} not yet implemented`);
+		} else {
+			this.log(`Unsupported evaulate request: ${context} ... ${JSON.stringify(args)}`);
+		}
+
         this.sendResponse(response);
     }
 
@@ -122,12 +140,12 @@ class StingrayDebugSession extends DebugSession {
 
         let currentTCSettings = getCurrentToolchainSettings(tcSettingsPath);
         this.projectRoot = currentTCSettings.SourceDirectory.replace(/\\/g, '/').toLowerCase() + '/';
-        this.log("attach request path: " + this.projectRoot);
-        
+        this.log(`attach request path: ${this.projectRoot}`);
+
         this.connection = new StingrayConnection(port, ip);
         this.connection.onDidReceiveData.add(this.onStingrayMessage.bind(this));
         this.connection.onDidConnect.add(()=>{
-            this.log("We are connected!"); 
+            this.log('We are connected!');
             this.connection?.sendLua(luaHelpers.join("\n"));
             this.connection?.sendDebuggerCommand('report_status');
             this.sendEvent(new InitializedEvent());
@@ -149,10 +167,10 @@ class StingrayDebugSession extends DebugSession {
     }
 
     private log(message:string) {
-        //this.sendEvent(new OutputEvent(message + '\r\n'));
+        this.sendEvent(new OutputEvent(`${message}\r\n`));
     }
 
-    protected onStingrayMessage(data:any) {
+    protected onStingrayMessage(data: any) {
        if (data.type === "lua_debugger"){
             // this.log(JSON.stringify(data));
             if (data.message === 'halted') {
@@ -193,11 +211,13 @@ class StingrayDebugSession extends DebugSession {
             } else if (data.node_index || data.requestId) {
                 const pendingRequest = this.commandRequests.get(data.node_index);
                 if (pendingRequest) {
-                    this.log("Unhandled request: "+ data.node_index + " ... " + JSON.stringify(data));
+                    this.log(`Unhandled request: ${data.node_index} ... ${JSON.stringify(data)}`);
                     this.commandRequests.delete(data.node_index);
                 }
             }
-        }
+        } else {
+			this.log(`Unhandled request: ${data.type} ... ${JSON.stringify(data)}`);
+		}
     }
 
     protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
@@ -275,51 +295,54 @@ class StingrayDebugSession extends DebugSession {
                     stingrayBreakpoints[resourceName] = bpLines;
                 }
             });
-            this.log("set breakpoints: " + JSON.stringify({ breakpoints: stingrayBreakpoints }));
+            this.log(`set breakpoints: ${JSON.stringify({ breakpoints: stingrayBreakpoints })}` );
             this.connection?.sendDebuggerCommand('set_breakpoints', { breakpoints: stingrayBreakpoints });
         }
     }
 
     protected configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments): void {
-        this.log("configurationDoneRequest");
+        this.log('configurationDoneRequest');
 
         // In case the engine is waiting for the debugger, let'S tell him we are ready.
         // if (this._waitingForBreakpoints) {
         //     this._conn.sendDebuggerCommand('continue');
         //     this._waitingForBreakpoints = false;
         // }
-
         this.sendResponse(response);
     }
 
+	protected async launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments) {
+		this.sendResponse(response);
+	}
+
     protected pauseRequest(response: DebugProtocol.PauseResponse, args: DebugProtocol.PauseArguments): void {
-        this.log("break");
+        this.log('break');
         this.connection?.sendDebuggerCommand('break');
         this.sendResponse(response);
     }
 
     protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
-        this.log("continue");
+        this.log('continue');
         this.connection?.sendDebuggerCommand('continue');
         this.sendResponse(response);
     }
 
     protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
-        this.log("step_over");
+        this.log('step_over');
 
         this.connection?.sendDebuggerCommand('step_over');
         this.sendResponse(response);
     }
 
     protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {
-        this.log("step_into");
+        this.log('step_into');
 
         this.connection?.sendDebuggerCommand('step_into');
         this.sendResponse(response);
     }
 
     protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments): void {
-        this.log("step_out");
+        this.log('step_out');
 
         this.connection?.sendDebuggerCommand('step_out');
         this.sendResponse(response);
@@ -417,17 +440,17 @@ class StingrayDebugSession extends DebugSession {
                 return request.promise;
             }
         }
-        this.log("No table context for ref id: " + variableRefId);
+        this.log(`No table context for ref id: ${variableRefId}`);
         return Promise.reject();
     }
 
     private getTablePath(tableContext: StingrayTableContext) : [string, number[]] {
         let path: number[] = [];
-        this.log("start: " + tableContext.varIndex);
+        this.log(`start: ${tableContext.varIndex}`);
         while (tableContext.parentRefId >= 0) {
             path.push(tableContext.varIndex);
             let next = this.tableContextMap.get(tableContext.parentRefId);
-            this.log("next: " + next?.varIndex || "???");
+            this.log(`next: ${next?.varIndex || '???'}`);
             if (next) {
                 tableContext = next;
             }
@@ -456,7 +479,7 @@ class StingrayDebugSession extends DebugSession {
     }
 
     protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
-        this.log("variablesRequest " + args.variablesReference);
+        this.log(`variablesRequest ${args.variablesReference}`);
 
         const variables = this.variableRefMap.get(args.variablesReference);
         if (variables) {
