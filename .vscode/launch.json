@@ -9,13 +9,47 @@
 			"name": "Run Extension",
 			"type": "extensionHost",
 			"request": "launch",
+			"runtimeExecutable": "${execPath}",
 			"args": [
 				"--extensionDevelopmentPath=${workspaceFolder}"
 			],
 			"outFiles": [
+				"${workspaceFolder}/out/**/*.js",
+			],
+			"preLaunchTask": "npm: watch"
+		},
+		{
+			"name": "Run Extension (Debug)",
+			"type": "extensionHost",
+			"request": "launch",
+			"debugServer": 4711,
+			"runtimeExecutable": "${execPath}",
+			"args": [
+				"--extensionDevelopmentPath=${workspaceFolder}"
+			],
+			"outFiles": [
+				"${workspaceFolder}/out/**/*.js",
+			],
+			"preLaunchTask": "npm: watch"
+		},
+		{
+			"name": "Start Server",
+			"type": "node",
+			"request": "launch",
+			"cwd": "${workspaceFolder}",
+			"program": "${workspaceFolder}/src/stingray-debug-adapter.ts",
+			"args": [
+				"--server=4711"
+			],
+			"outFiles": [
 				"${workspaceFolder}/out/**/*.js"
 			],
-			"preLaunchTask": "${defaultBuildTask}"
+		},
+	],
+	"compounds": [
+		{
+			"name": "Extension + Server",
+			"configurations": [ "Run Extension (Debug)", "Start Server" ]
 		}
 	]
 }
