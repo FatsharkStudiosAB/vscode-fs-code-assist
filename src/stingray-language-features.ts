@@ -1,10 +1,87 @@
-import { Color, ColorInformation, ColorPresentation, CompletionItem, CompletionItemKind, DecorationRangeBehavior, Disposable, DocumentLink, DocumentSymbol, ExtensionContext, FoldingRange, FoldingRangeKind, languages, Range, SignatureHelp, SignatureInformation, SymbolKind, TextEdit, Uri, window, workspace } from "vscode";
+import { CancellationToken, Color, ColorInformation, ColorPresentation, CompletionItem, CompletionItemKind, DecorationRangeBehavior, DocumentLink, DocumentSymbol, ExtensionContext, FoldingContext, FoldingRange, FoldingRangeKind, languages, Location, Position, Range, SymbolInformation, SymbolKind, TextDocument, TextDocumentWillSaveEvent, Uri, window, workspace } from "vscode";
+import { RawSymbolInformation, Indexer } from "./project-symbol-indexer";
 
 const LANGUAGE_SELECTOR = "lua";
 
-const disposables: Disposable[] = [];
+class StingrayLuaLanguageServer {
+	private _initialized = false;
+	private _symbols = new Map<String, SymbolInformation[]>();
+
+	constructor() {
+		workspace.onWillSaveTextDocument(this.onWillSaveTextDocument.bind(this));
+	}
+
+	pushSymbolData(symbol: RawSymbolInformation) {
+		const { name, path, line, char, kind, parent } = symbol;
+		let list = this._symbols.get(name);
+		if (!list) {
+			list = [];
+			this._symbols.set(name, list);
+		}
+		const location = new Location(Uri.file(path), new Position(line, char));
+		list.push(new SymbolInformation(name, SymbolKind[kind], parent || "", location))
+	}
+
+	async symbols() {
+		if (!this._initialized) {
+			this._initialized = true;
+			await this.parseAllLuaFiles();
+		}
+		return this._symbols;
+	}
+
+	async parseAllLuaFiles(token?: CancellationToken) {
+		const uris = await workspace.findFiles("{foundation,scripts}/**/*.lua");
+		const indexer = new Indexer(uris.map((uri) => uri.fsPath), this.pushSymbolData.bind(this));
+		token?.onCancellationRequested(() => {
+			indexer.abort();
+		});
+		try {
+			const elapsed = await indexer.run();
+			window.showInformationMessage(`Indexed ${uris.length} files in ${Math.floor(elapsed)} ms using up to ${indexer.threadCount} worker threads.`);
+		} catch (e) {
+			window.showErrorMessage((e as Error).message);
+		}
+	}
+
+	onWillSaveTextDocument(event: TextDocumentWillSaveEvent) {
+		if (event.document.languageId === "lua") {
+			//this.parseLuaFile(event.document.uri);
+		}
+	}
+}
+
 
 export function activate(context: ExtensionContext) {
+	const server = new StingrayLuaLanguageServer();
+
+	context.subscriptions.push(languages.registerDefinitionProvider(LANGUAGE_SELECTOR, {
+		provideDefinition: async function (document: TextDocument, position: Position, token: CancellationToken): Promise<Location[] | undefined> {
+			const wordRange = document.getWordRangeAtPosition(position, /[\w_]+/);
+			if (!wordRange) {
+				return undefined;
+			}
+			const word = document.getText(wordRange);
+			const symbols = await server.symbols();
+			return symbols.get(word)?.map((sym) => sym.location);
+		}
+	}));
+
+	context.subscriptions.push(languages.registerWorkspaceSymbolProvider({
+		provideWorkspaceSymbols: async function (query: string, token: CancellationToken): Promise<SymbolInformation[] | undefined> {
+			const symbols = await server.symbols();
+			query = query.toLowerCase();
+			let result: SymbolInformation[] = [];
+			for (const [key, symbolList] of symbols) {
+				if (key.toLowerCase().includes(query)) {
+					result = result.concat(symbolList);
+				}
+			}
+			return result;
+		}
+	}));
+
+
 	const IF_BEGIN_REGEX = /^\s*--IF_BEGIN/;
 	const IF_END_REGEX = /^\s*--IF_END/;
 	const IF_LINE_REGEX = /--IF_LINE/;
@@ -17,7 +94,7 @@ export function activate(context: ExtensionContext) {
 	});
 
 	context.subscriptions.push(languages.registerFoldingRangeProvider(LANGUAGE_SELECTOR, {
-		provideFoldingRanges(document, context, token) {
+		provideFoldingRanges(document: TextDocument, context: FoldingContext, token: CancellationToken) {
 			const foldingRanges = [];
 			const decoratorRanges = [];
 			const regionStack = [];
@@ -62,7 +139,7 @@ export function activate(context: ExtensionContext) {
 
 	const CLASS_REGEX = /^(\w+)\s*=\s*class/;
 	const OBJECT_REGEX = /^(\w+)\s*=\s*\1/;
-	const METHOD_REGEX = /^function\s+(\w+)[:.]([\w_]+)\(([^)]+)\)/;
+	const METHOD_REGEX = /^function\s+(\w+)[:.]([\w_]+)\(([^)]*)\)/;
 	const FUNCTION_REGEX = /^function\s+([\w_]+)\(/;
 	const ENUM_REGEX = /([\w_]+)\s*=\s*table\.enum\(/;
 	const CONST_REGEX = /^(?:local\s+)?([A-Z_]+)\s*=/;
