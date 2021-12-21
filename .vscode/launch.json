@@ -15,20 +15,8 @@
 			],
 			"outFiles": [
 				"${workspaceFolder}/out/**/*.js",
-			]
-		},
-		{
-			"name": "Run Extension (Debug)",
-			"type": "extensionHost",
-			"request": "launch",
-			"debugServer": 4711,
-			"runtimeExecutable": "${execPath}",
-			"args": [
-				"--extensionDevelopmentPath=${workspaceFolder}"
 			],
-			"outFiles": [
-				"${workspaceFolder}/out/**/*.js",
-			]
+			"preLaunchTask": "npm: compile"
 		},
 		{
 			"name": "Start Server",
@@ -42,12 +30,13 @@
 			"outFiles": [
 				"${workspaceFolder}/out/**/*.js"
 			],
+			"preLaunchTask": "npm: compile"
 		},
 	],
 	"compounds": [
 		{
 			"name": "Extension + Server",
-			"configurations": [ "Run Extension (Debug)", "Start Server" ]
+			"configurations": [ "Run Extension", "Start Server" ]
 		}
 	]
 }

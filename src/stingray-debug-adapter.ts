@@ -1,582 +1,547 @@
-import { LoggingDebugSession, DebugSession, Breakpoint, Source, OutputEvent, InitializedEvent, StoppedEvent, Thread, BreakpointEvent, StackFrame, Scope, Variable } from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
+import { DebugSession, Breakpoint, Source, OutputEvent, InitializedEvent, StoppedEvent, Thread, BreakpointEvent, StackFrame, Scope, Variable } from 'vscode-debugadapter';
 import { StingrayConnection } from './stingray-connection';
-import { getCurrentToolchainSettings, getToolchainSettingsPath } from './utils';
-import { luaHelpers } from './engine-snippets';
-import path = require('path');
-import {readFileSync, existsSync as fileExists} from 'fs';
+import { getCurrentToolchainSettings, getToolchainSettingsPath, uuid4 } from './utils';
+import * as path from 'path';
+import { readFileSync, existsSync as fileExists } from 'fs';
 import * as SJSON from 'simplified-json';
 
-
-interface StingrayBreakpoints {
-    [key: string]: number[];
-}
-
-interface StingrayScopeContent {
-    variablesReference: number;
-    frameId: number;
-    scopeId: string;
-    variables: Variable[];
-}
-
-interface StingrayTableValue {
-    type: string;
-    value: string;
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    var_name: string;
-    key?: string;
-}
-
-interface StingrayTableContext {
-    frameId: number,
-    varName: string,
-    varIndex: number,
-    parentRefId: number
-}
-
-interface StingrayCommandRequset {
-    id: number,
-    promise: Promise<any>
-}
-
-interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
-	/** An absolute path to the "program" to debug. */
-	program: string;
-	/** Automatically stop target after launch. If not specified, target does not stop. */
-	stopOnEntry?: boolean;
-	/** enable logging the Debug Adapter Protocol */
-	trace?: boolean;
-}
-
-const THREAD_ID = 1;
-const SCOPE_DESCS : { [key:string] : string; } = {
-    local: 'Local',
-    up_values: 'Up Values',
+/** Map of file paths to line numbers with breakpoints. */
+type StingrayBreakpoints = {
+	[filePath: string]: number[];
 };
 
-class StingrayDebugSession extends DebugSession {
+type RefId = number;
+type FrameId = number;
 
-    connection?: StingrayConnection;
-    breakpoints: Map<string, DebugProtocol.Breakpoint[]>;
-    lastBreakpointId: number;
-    lastVariableReferenceId: number;
-    lastCommandRequestId: number;
-    variableRefMap: Map<number, Variable[]>;
-    tableContextMap: Map<number,StingrayTableContext>;
-    commandRequests: Map<number, any>;
+/** A variable or scope pseudo-variable that can be lazily recursively expanded. */
+class StingrayVariable extends Variable {
+	static refIdIncrementingCounter: RefId = 0;
+	public type?: string;
+	public presentationHint?: DebugProtocol.VariablePresentationHint;
+	private _promise?: Promise<StingrayVariable[]>;
 
-    callstack: any | null;
-    projectRoot: string;
-    projectFolderMaps: Map<string, string>;
-    projectMapFolder : string;
-    coreMapFolder : string;
-
-    constructor() {
-        super();
-        this.breakpoints = new Map<string, DebugProtocol.Breakpoint[]>();
-        this.variableRefMap = new Map<number, Variable[]>();
-        this.tableContextMap = new Map<number, StingrayTableContext>();
-        this.commandRequests = new Map<number, any>();
-        this.projectFolderMaps = new Map<string, string>();
-
-        this.lastBreakpointId = 0;
-        this.lastVariableReferenceId = 0;
-        this.lastCommandRequestId = 0;
-        this.projectRoot = "";
-        this.projectMapFolder = "";
-        this.coreMapFolder = "";
-    }
-
-    protected initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
-		response.body = response.body || {};
-
-        response.body.supportsEvaluateForHovers = true;
-        response.body.supportsConfigurationDoneRequest = true;
-        response.body.supportsRestartRequest = true;
-        response.body.supportsSetVariable = false;
-        response.body.exceptionBreakpointFilters = [
-            {
-                filter: "error",
-                label: "Uncaught Exception",
-                default: true,
-            }
-        ];
-
-        this.sendResponse(response);
-		this.sendEvent(new InitializedEvent());
-    }
-
-    protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
-		const { context } = args;
-		if (!context) {
-			return;
-		}
-
-		if (context === 'hover') {
-			this.log(`${context} not yet implemented`);
-		} else {
-			this.log(`Unsupported evaulate request: ${context} ... ${JSON.stringify(args)}`);
-		}
-
-        this.sendResponse(response);
-    }
-
-    protected attachRequest(response: DebugProtocol.AttachResponse, args:any): void {
-        var ip = args.ip;
-        var port = args.port;
-        let tcPath = args.toolchain;
-        if (!tcPath) {
-            this.sendResponse(response);
-            return;
-        }
-
-        const tcSettingsPath = getToolchainSettingsPath(tcPath);
-        if (!tcSettingsPath) {
-            this.sendResponse(response);
-            return;
-        }
-
-        this.initProjectPaths(tcPath);
-
-        let currentTCSettings = getCurrentToolchainSettings(tcSettingsPath);
-        this.projectRoot = currentTCSettings.SourceDirectory.replace(/\\/g, '/').toLowerCase() + '/';
-        this.log(`attach request path: ${this.projectRoot}`);
-
-        this.connection = new StingrayConnection(port, ip);
-        this.connection.onDidReceiveData.add(this.onStingrayMessage.bind(this));
-        this.connection.onDidConnect.add(()=>{
-            this.log('We are connected!');
-            this.connection?.sendLua(luaHelpers.join("\n"));
-            this.connection?.sendDebuggerCommand('report_status');
-            this.sendEvent(new InitializedEvent());
-            this.sendResponse(response);
-        });
-    }
-
-    public shutdown(): void {
-        this.connection?.sendDebuggerCommand('set_breakpoints', {breakpoints: {}});
-        this.connection?.sendDebuggerCommand('continue');
+	constructor(name: string, value: string, private executor?: (resolve: (value: StingrayVariable[]) => void) => void) {
+		super(name, value, executor ? ++StingrayVariable.refIdIncrementingCounter : 0);
 	}
 
-    protected disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments): void {
-        this.shutdown();
-        this.connection?.close();
-        this.connection = undefined;
-
-        this.sendResponse(response);
-    }
-
-    private log(message:string) {
-        this.sendEvent(new OutputEvent(`${message}\r\n`));
-    }
-
-    protected onStingrayMessage(data: any) {
-       if (data.type === "lua_debugger"){
-            // this.log(JSON.stringify(data));
-            if (data.message === 'halted') {
-                const line = data.line;
-                const isMapped = data.source[0] === '@';
-                const resourcePath = isMapped ? data.source.slice(1) : data.source;
-                let haltReason = 'paused';
-                if (this.breakpoints.has(resourcePath)) {
-                    const fileBreakpoints = this.breakpoints.get(resourcePath);
-                    const bp = fileBreakpoints?.find(bp => bp.line === line);
-                    if (bp) {
-                        this.log(`breakpoint halt: ${resourcePath}:${line}`);
-                        bp.verified = true;
-                        this.sendEvent(new BreakpointEvent("update", bp));
-                        haltReason = 'breakpoint';
-                    }
-                }
-                this.sendEvent(new StoppedEvent(haltReason, THREAD_ID));
-            } else if (data.message === 'callstack') {
-                this.callstack = data.stack;
-                this.variableRefMap.clear();
-            } else if (data.message === 'expand_table') {
-                const pendingRequest = this.commandRequests.get(data.node_index);
-                if (pendingRequest) {
-                    const parentTableContext = this.tableContextMap.get(data.local_num);
-                    if (parentTableContext && data.table !== "nil") {
-                        const varRefId = this.translateStingrayFrameData(data.table_path.level, data.table, data.local_num);
-                        const variables = this.variableRefMap.get(varRefId) || [];
-                        pendingRequest.resolve(variables);
-                    } else { // register empty so we don't bother re evaluating
-                        const varRefId = this.generateVariableRefId();
-                        this.variableRefMap.set(varRefId, []);
-                        pendingRequest.reject();
-                    }
-
-                    this.commandRequests.delete(data.node_index);
-                }
-            } else if (data.node_index || data.requestId) {
-                const pendingRequest = this.commandRequests.get(data.node_index);
-                if (pendingRequest) {
-                    this.log(`Unhandled request: ${data.node_index} ... ${JSON.stringify(data)}`);
-                    this.commandRequests.delete(data.node_index);
-                }
-            }
-        } else {
-			this.log(`Unhandled request: ${data.type} ... ${JSON.stringify(data)}`);
+	/** Returns a promise that will eventually resolve to its children (if any). */
+	children(): Promise<StingrayVariable[]> {
+		if (!this._promise) {
+			const executor = this.executor;
+			if (executor) {
+				this._promise = new Promise(resolve => executor(resolve));
+			} else {
+				this._promise = Promise.reject("Object does not have children.");
+			}
+			this._promise = this._promise.then((children) => {
+				children.sort(StingrayVariable.compare); // In-place! Dirty!
+				return children;
+			});
 		}
-    }
+		return this._promise;
+	};
 
-    protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
-        const filePath = args.source.path;
-        const clientLines = args.lines;
+	/** Convenience function to resolve a string path. */
+	async resolve(path: string[]): Promise<StingrayVariable | undefined> {
+		if (path.length === 0) {
+			return this;
+		}
+		const children = await this.children();
+		const child = children.find((child) => child.name === path[0]);
+		return child?.resolve(path.slice(1));
+	}
 
-        if (!filePath) {
-            this.sendResponse(response);
-            return;
-        }
+	static _collator = new Intl.Collator();
+	static _visibilityIndex: ({ [visibility: string]: number; }) = {
+		public: 1,
+		private: 2,
+		internal: 3,
+	};
+	static compare(a: StingrayVariable, b: StingrayVariable): number {
+		const aVisibility = StingrayVariable._visibilityIndex[a.presentationHint?.visibility ?? 'public'] ?? 99;
+		const bVisibility = StingrayVariable._visibilityIndex[b.presentationHint?.visibility ?? 'public'] ?? 99;
+		if (aVisibility !== bVisibility) {
+			return aVisibility - bVisibility;
+		}
+		return StingrayVariable._collator.compare(a.name, b.name);
+	}
+};
 
-        // Find resource root looking for settings.ini or .stingray-asset-server-directory
-        let resourcePath = filePath;
-        let validScript = true;
+type StingrayAttachRequestArguments = DebugProtocol.AttachRequestArguments & {
+	ip: string;
+	port: number;
+	toolchain: string;
+	loggingEnabled?: boolean;
+};
 
-        // Uppercase the paths so we do case insensitive comparison in the while loop
-        let projectMapFolder = this.projectMapFolder.toUpperCase();
-        let coreMapFolder = this.coreMapFolder.toUpperCase();
-        let dirPath = path.dirname(filePath).replace(/^[\/\\]|[\/\\]$/g, '').toUpperCase();
+type StingrayLaunchRequestArguments = DebugProtocol.LaunchRequestArguments & {
+	loggingEnabled?: boolean;
+};
 
-        while (true) {
-            // Check that we have a valid script folder or that we did not reach the drive root.
-            if (!dirPath || dirPath === filePath || dirPath === '.') {
-                validScript = false;
-                break;
-            }
+const THREAD_ID = 1;
 
-            if (dirPath === path.dirname(dirPath)) {
-                validScript = false;
-                break;
-            }
+class StingrayDebugSession extends DebugSession {
+	connection?: StingrayConnection;
 
-            if (dirPath === projectMapFolder) {
-                resourcePath = path.relative(this.projectMapFolder, filePath);
-                break;
-            }
+	// Breakpoints.
+	breakpoints = new Map<string, DebugProtocol.Breakpoint[]>();
+	lastBreakpointId = 0;
 
-            if (dirPath === coreMapFolder) {
-                resourcePath = path.join('core', path.relative(this.coreMapFolder, filePath));
-                break;
-            }
+	// Callstack information.
+	callstack: EngineCallstack = [];
+	variables = new Map<RefId, StingrayVariable>();
+	repl = new Map<RefId, StingrayVariable>();
+	frames = new Map<FrameId, StingrayVariable[]>();
 
-            dirPath = path.dirname(dirPath);
-        }
+	callbacks = new Map<string, { (data: any): void }>();
 
-        const resourceName = resourcePath.replace(/\\/g, '/');//resourcePath?.replace(/\\/g, '/').replace(this.projectRoot, "") || "???";
-        this.log(resourceName);
+	expandTableIndex = 0;
+	expandTableCallbacks = new Map<number, { (data: any): void }>();
 
-        // Verify breakpoint locations
-        if (clientLines && resourceName){
-            var vsBreakpoints = new Array<Breakpoint>();
-            let breakpointId = this.lastBreakpointId;
-            clientLines.forEach(line => {
-                let bp = <DebugProtocol.Breakpoint> new Breakpoint(validScript, line, 0, new Source(resourceName, filePath));
-                bp.id = breakpointId;
-                vsBreakpoints.push(bp);
-                breakpointId += 1;
-            });
-            this.lastBreakpointId = breakpointId;
-            this.breakpoints.set(resourceName, validScript ? vsBreakpoints : []);
-            response.body = { breakpoints: vsBreakpoints };
-            this.sendResponse(response);
+	// Debugging the debugger.
+	loggingEnabled = false;
 
-            // need to send all of them at once since it clears them every time new ones are sent
-            let stingrayBreakpoints = <StingrayBreakpoints>{};
-            this.breakpoints.forEach((breakpoints, resourceName) => {
-                if (vsBreakpoints.length > 0) {
-                    let bpLines = <number[]>[];
-                    breakpoints.forEach(bp => {
-                        if (bp.line) {
-                            bpLines.push(bp.line);
-                        }
-                    });
-                    this.log(resourceName + bpLines.toString());
-                    stingrayBreakpoints[resourceName] = bpLines;
-                }
-            });
-            this.log(`set breakpoints: ${JSON.stringify({ breakpoints: stingrayBreakpoints })}` );
-            this.connection?.sendDebuggerCommand('set_breakpoints', { breakpoints: stingrayBreakpoints });
-        }
-    }
+	// Project information.
+	projectRoot = "";
+	projectFolderMaps = new Map<string, string>();
+	projectMapFolder = "";
+	coreMapFolder  = "";
 
-    protected configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments): void {
-        this.log('configurationDoneRequest');
+	constructor() {
+		super();
+	}
 
-        // In case the engine is waiting for the debugger, let'S tell him we are ready.
-        // if (this._waitingForBreakpoints) {
-        //     this._conn.sendDebuggerCommand('continue');
-        //     this._waitingForBreakpoints = false;
-        // }
-        this.sendResponse(response);
-    }
+	private doRequest(request_type: string, request_args: any): Promise<any> {
+		return new Promise((resolve, reject) => {
+			const request_id = uuid4();
+			// eslint-disable-next-line @typescript-eslint/naming-convention
+			const request = { ...request_args, request_type, request_id };
+			this.callbacks.set(request_id, resolve);
+			this.connection?.sendLua(`VSCodeDebugAdapter[===[${JSON.stringify(request)}]===]`);
+		});
+	}
 
-	protected async launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments) {
+	private handleLegacyMessage(data: any) {
+		if (data.message === 'halted') {
+			let haltReason = 'paused';
+			const resourcePath = this.toResourcePath(data.source);
+			if (this.breakpoints.has(resourcePath)) {
+				const line = data.line;
+				const bp = this.breakpoints.get(resourcePath)?.find((bp) => (bp.line === line));
+				if (bp) {
+					bp.verified = true;
+					haltReason = 'breakpoint';
+					this.sendEvent(new BreakpointEvent('update', bp));
+				}
+			}
+			this.sendEvent(new StoppedEvent(haltReason, THREAD_ID));
+		} else if (data.message === 'callstack') {
+			this.callstack = data.stack;
+			this.variables.clear();
+			this.frames.clear();
+			this.expandTableCallbacks.clear();
+		} else if (data.message === 'expand_table') {
+			const callback = this.expandTableCallbacks.get(data.node_index);
+			if (callback) {
+				callback(data);
+				this.expandTableCallbacks.delete(data.node_index);
+			} else {
+				this.log(`Received expand_table with id ${data.node_index}, but there was no pending request.`);
+			}
+		}
+	}
+
+	private onStingrayMessage(data: any) {
+		if (data.type === 'lua_debugger') {
+			this.handleLegacyMessage(data);
+		} else if (data.type === 'vscode_debug_adapter') {
+			const callback = this.callbacks.get(data.request_id);
+			if (callback) {
+				callback(data);
+			} else {
+				this.log(`Unhandled request with type:${data.request_type} and id:${data.request_id}.`);
+			}
+		} else {
+			return;
+		}
+	}
+
+	/** At initialize we reply with the capabilities of this debug adapter. */
+	protected initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
+		this.log(`Received initialize request from ${args.clientID} to ${args.adapterID}`);
+		response.body = response.body || {};
+		response.body.supportsEvaluateForHovers = true;
+		response.body.supportsConfigurationDoneRequest = true;
+		response.body.supportsRestartRequest = true;
+		response.body.supportsSetVariable = false;
+		response.body.supportsDisassembleRequest = true;
+		response.body.exceptionBreakpointFilters = [
+			{
+				filter: "error",
+				label: "Uncaught Exception",
+				default: true,
+			}
+		];
+		this.sendResponse(response);
+		this.sendEvent(new InitializedEvent());
+	}
+
+	protected async disassembleRequest(response: DebugProtocol.DisassembleResponse, args: DebugProtocol.DisassembleArguments, request?: DebugProtocol.Request): Promise<void> {
+		const disassemble = await this.doRequest("disassemble", {});
+		const instructions = disassemble.result.map((bytecode:any, index:number) => {
+			return {
+				address: index.toString(),
+				instructionBytes: "abc",
+				instruction: "ADD a, b, c",
+				location: new Source('a', 'b'),
+				line: 0,
+			};
+		});
+		response.body = { instructions: instructions };
 		this.sendResponse(response);
 	}
 
-    protected pauseRequest(response: DebugProtocol.PauseResponse, args: DebugProtocol.PauseArguments): void {
-        this.log('break');
-        this.connection?.sendDebuggerCommand('break');
-        this.sendResponse(response);
-    }
+	protected attachRequest(response: DebugProtocol.AttachResponse, args: StingrayAttachRequestArguments): void {
+		const ip = args.ip;
+		const port = args.port;
+		const tcPath = args.toolchain;
+		if (!tcPath) {
+			this.sendErrorResponse(response, 1000, "No toolchain path.");
+			return;
+		}
 
-    protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
-        this.log('continue');
-        this.connection?.sendDebuggerCommand('continue');
-        this.sendResponse(response);
-    }
+		const tcSettingsPath = getToolchainSettingsPath(tcPath);
+		if (!tcSettingsPath) {
+			this.sendErrorResponse(response, 1000, "No toolchain settings path.");
+			return;
+		}
 
-    protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
-        this.log('step_over');
+		this.initProjectPaths(tcPath);
 
-        this.connection?.sendDebuggerCommand('step_over');
-        this.sendResponse(response);
-    }
+		const currentTCSettings = getCurrentToolchainSettings(tcSettingsPath);
+		this.projectRoot = currentTCSettings.SourceDirectory.replace(/\\/g, '/').toLowerCase() + '/';
+		this.connection = new StingrayConnection(port, ip);
+		this.connection.onDidReceiveData.add(this.onStingrayMessage.bind(this));
+		this.connection.onDidConnect.add(()=>{
+			this.log(`Successfully connected to ${ip}:${port}`);
+			const snippets = readFileSync(path.join(__dirname, '../snippets.lua'), 'utf8');
+			this.connection?.sendLua(snippets);
+			this.connection?.sendDebuggerCommand('report_status');
+			this.sendEvent(new InitializedEvent());
+			this.sendResponse(response);
+		});
+	}
 
-    protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {
-        this.log('step_into');
+	protected async launchRequest(response: DebugProtocol.LaunchResponse, args: StingrayLaunchRequestArguments) {
+		this.log('NYI');
+		this.sendResponse(response);
+	}
 
-        this.connection?.sendDebuggerCommand('step_into');
-        this.sendResponse(response);
-    }
+	protected async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): Promise<void> {
+		switch (args.context) {
+		case 'watch':
+			break;
+		case 'repl':
+			const repl = await this.doRequest('repl', { expression: args.expression, level: args.frameId });
+			if (repl.ok) {
+				const variable = this.expandRepl(repl.result, repl.result.id, []);
+				response.body = {
+					result: variable.value,
+					type: variable.type,
+					variablesReference: variable.variablesReference,
+				};
+			} else {
+				this.sendEvent(new OutputEvent(`${repl.result}\r\n`, 'stderr'));
+			}
 
-    protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments): void {
-        this.log('step_out');
+			break;
+		case 'hover':
+			const scopes = args.frameId !== undefined ? this.frames.get(args.frameId) : undefined;
+			const path = args.expression.split(/[.:]/);
+			const variable = await scopes?.[0].resolve(path);
+			if (variable) {
+				response.body = {
+					result: variable.value,
+					type: variable.type,
+					variablesReference: variable.variablesReference,
+				};
+			}
+			break;
+		default:
+			return;
+		}
 
-        this.connection?.sendDebuggerCommand('step_out');
-        this.sendResponse(response);
-    }
-    
-    protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments): void {
-        this.log(`scopesRequest ${args.frameId}`);
-        let scopes : Scope[] = [];
-        for (const scopeId in SCOPE_DESCS) {
-            const scopeName = SCOPE_DESCS[scopeId];
-            let variablesRefId = this.translateStingrayFrameData(args.frameId, this.callstack[args.frameId][scopeId]);
-            scopes.push(new Scope(scopeName, variablesRefId, false));
-        }
+		this.sendResponse(response);
+	}
 
-        response.body = { scopes: scopes };
-        this.sendResponse(response);
-    }
+	public shutdown(): void {
+		// Ensure the debuggee is not stopped.
+		this.connection?.sendDebuggerCommand('set_breakpoints', { breakpoints: {} });
+		this.connection?.sendDebuggerCommand('continue');
+	}
 
-    private translateStingrayFrameData(frameId: number, stingrayFrameData: StingrayTableValue[], parentRefId?:number) : number {
-        const refId = this.generateVariableRefId();
-        let variables : Variable[] = [];
-        
-        let varIdx = 1;
-        stingrayFrameData.forEach(stingrayValue => {
-            let varName = stingrayValue.key || stingrayValue.var_name;
-            if (varName !== "(*temporary)") {
-                if (stingrayValue.type === 'table') {
-                    let tableItems = stingrayValue.value.split('\n\t');
-                    if (tableItems.length > 1) {
-                        let tableRefId = this.generateVariableRefId();
-                        this.translateStingrayTableData(tableItems, tableRefId);
+	protected disconnectRequest(response: DebugProtocol.DisconnectResponse, _args: DebugProtocol.DisconnectArguments): void {
+		this.shutdown();
+		this.connection?.close();
+		this.connection = undefined;
+		this.sendResponse(response);
+	}
 
-                        variables.push({
-                            name: varName,
-                            value: "{table}",
-                            variablesReference: tableRefId,
-                        });
-                    } else {
-                        let reservedTableRefId = this.generateVariableRefId();
-                        this.tableContextMap.set(reservedTableRefId, {
-                            frameId,
-                            varName: varName,
-                            varIndex: varIdx,
-                            parentRefId: parentRefId || -1,
-                        });
-                        variables.push({
-                            name: varName,
-                            value: stingrayValue.value,
-                            variablesReference: reservedTableRefId,
-                        });
-                    }
-                    
-                } else {
-                    variables.push({
-                        name: varName,
-                        value: stingrayValue.value,
-                        variablesReference: 0,
-                    });
-                }
-            }
-            varIdx++;
-        });
+	private log(message:string) {
+		if (this.loggingEnabled) {
+			this.sendEvent(new OutputEvent(`${message}\r\n`, 'console'));
+		}
+	}
 
-        this.variableRefMap.set(refId, variables);
-        return refId;
-    }
+	protected setExceptionBreakPointsRequest(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments, request?: DebugProtocol.Request): void {
+		this.sendResponse(response);
+	}
 
-    private makeCommandRequest() : StingrayCommandRequset {
-        let request = {resolve: <any>null, reject: <any>null};
-        let requestId = this.lastCommandRequestId++;
-        let p = new Promise<any>((resolve, reject) => {
-            request.resolve = resolve;
-            request.reject = reject;
-        });
-        this.commandRequests.set(requestId, request);
+	protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
+		const filePath = args.source.path;
+		const clientLines = args.lines;
+		if (!filePath || !clientLines) {
+			this.sendErrorResponse(response, 1000, ".source.path and .lines must both be present.");
+			return;
+		}
 
-        return {promise: p, id: requestId};
-    }
+		const resourcePath = path.relative(this.projectMapFolder, filePath).replace(/\\/g, '/');
+		const validScript = !!resourcePath && !resourcePath.startsWith('..') && !path.isAbsolute(resourcePath);
+		// @TODO: Add support for this.coreMapFolder.
 
-    private requestTableExpand(variableRefId: number) : Promise<Variable[]> {
-        const tableContext = this.tableContextMap.get(variableRefId);
-        if (tableContext) {
-            let tablePath = this.getTablePath(tableContext);
-            if (tablePath){
-                let request = this.makeCommandRequest();
-                this.connection?.sendDebuggerCommand('expand_table', {
-                    local_num: variableRefId, 
-                    node_index: request.id,
-                    table_path: {
-                        level: tableContext.frameId,
-                        local: tablePath[0],
-                        path: tablePath[1]
-                    }
-                });
-                return request.promise;
-            }
-        }
-        this.log(`No table context for ref id: ${variableRefId}`);
-        return Promise.reject();
-    }
+		// Verify breakpoint locations
+		const vsBreakpoints = clientLines.map(line => {
+			const bp = new Breakpoint(validScript, line, 0, new Source(resourcePath, filePath));
+			bp.setId(this.lastBreakpointId++);
+			return bp;
+		});
+		this.breakpoints.set(resourcePath, validScript ? vsBreakpoints : []);
+		response.body = { breakpoints: vsBreakpoints };
+		this.sendResponse(response);
 
-    private getTablePath(tableContext: StingrayTableContext) : [string, number[]] {
-        let path: number[] = [];
-        this.log(`start: ${tableContext.varIndex}`);
-        while (tableContext.parentRefId >= 0) {
-            path.push(tableContext.varIndex);
-            let next = this.tableContextMap.get(tableContext.parentRefId);
-            this.log(`next: ${next?.varIndex || '???'}`);
-            if (next) {
-                tableContext = next;
-            }
-        }
-        
-        this.log(path.reverse().toString());
-        return [tableContext.varName, path];
-    }
+		// Need to send all of them at once since it clears them every time new ones are sent.
+		let stingrayBreakpoints: StingrayBreakpoints = {};
+		this.breakpoints.forEach((breakpoints, resourceName) => {
+			if (vsBreakpoints.length > 0) {
+				stingrayBreakpoints[resourceName] = breakpoints.map(bp => bp.line || 0);
+			}
+		});
+		this.connection?.sendDebuggerCommand('set_breakpoints', { breakpoints: stingrayBreakpoints });
+	}
 
-    private translateStingrayTableData(tableItems: string[], tableRefId: number) {
-        let variables : Variable[] = [];
-        tableItems.forEach(stringVal =>{
-            if (stringVal !== "") {
-                variables.push({
-                    name: stringVal,
-                    value: "{unknown}",
-                    variablesReference: 0,
-                });
-            }
-        });
-        this.variableRefMap.set(tableRefId, variables);
-    }
+	protected configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, _args: DebugProtocol.ConfigurationDoneArguments): void {
+		this.sendResponse(response);
+		// Can the engine stop wating here for the debugger?
+	}
 
-    private generateVariableRefId() : number {
-        return ++this.lastVariableReferenceId;
-    }
+	protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments): void {
+		const frameId = args.frameId;
+		const locals = this.expandScope('Locals', frameId, this.callstack[frameId]['local']);
+		const upvals = this.expandScope('Upvalues', frameId, this.callstack[frameId]['up_values']);
+		this.frames.set(frameId, [ locals, upvals ]);
+		response.body = {
+			scopes: [
+				new Scope("Locals", locals.variablesReference, false),
+				new Scope("Upvalues", upvals.variablesReference, false),
+			]
+		};
+		this.sendResponse(response);
+	}
 
-    protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
-        this.log(`variablesRequest ${args.variablesReference}`);
+	private expandScope(name: string, frameId: FrameId, records: EngineCallstackRecord[]): StingrayVariable {
+		const v = new StingrayVariable(name, "n/a", (resolve) => {
+			const children: StingrayVariable[] = [];
+			records.forEach((record, index) => {
+				const name = record.key || record.var_name;
+				if (name === '(*temporary)') {
+					return;
+				}
+				children.push(this.expandValue(frameId, record, name, []));
+			});
+			resolve(children);
+		});
+		const ref = v.variablesReference;
+		if (ref) {
+			this.variables.set(ref, v);
+		}
+		return v;
+	}
 
-        const variables = this.variableRefMap.get(args.variablesReference);
-        if (variables) {
-            response.body = {
-                variables : variables,
-            };
-            this.sendResponse(response);
-        } else {
-            this.requestTableExpand(args.variablesReference).then((variables)=>{
-                response.body = {
-                    variables : variables,
-                };
-                this.sendResponse(response);
-            }, () => {
-                this.sendResponse(response);
-            });
-        }
-    }
+	private expandValue(frameId: FrameId, record: EngineCallstackRecord, localName: string, path: number[]): StingrayVariable {
+		let executor;
+		if (record.type === 'table') {
+			executor = (resolve: any) => {
+				const requestIndex = this.expandTableIndex++;
+				this.expandTableCallbacks.set(requestIndex, (data) => {
+					if (data.table === "nil" || data.table.length === 0) {
+						resolve([]);
+					}
+					const table = data.table as EngineCallstackRecord[];
+					resolve(table.map((childRecord, index) => {
+						return this.expandValue(frameId, childRecord, localName, [...path, index+1]);
+					}));
+				});
 
-    protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
-        response.body = { threads: [ new Thread(THREAD_ID, "thread 1") ] };
-        this.sendResponse(response);
-    }
+				this.connection?.sendDebuggerCommand('expand_table', {
+					node_index: requestIndex,
+					local_num: -1, // Unused by engine.
+					table_path: {
+						level: frameId,
+						local: localName,
+						path: path,
+					}
+				});
+			};
+		}
+		const name = record.key || record.var_name;
+		const v = new StingrayVariable(name, record.value, executor);
+		v.type = record.type;
+		v.presentationHint = {
+			visibility: name.startsWith('_') ? 'private' : 'public',
+		};
+		const ref = v.variablesReference;
+		if (ref) {
+			this.variables.set(ref, v);
+		}
+		return v;
+	}
 
-    protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments): void {
-        if (!this.callstack) {
-            return this.sendErrorResponse(response, 1000, "No callstack available");
-        }
+	private expandRepl(record: any, replId: number, path: number[]): StingrayVariable {
+		let executor;
+		if (record.type === 'table') {
+			executor = async (resolve: any) => {
+				const expandResponse = await this.doRequest('expandRepl', {
+					id: replId,
+					path: path,
+				});
+				const children: StingrayVariable[] = expandResponse.result.children.map((child: any, index: number) => {
+					return this.expandRepl(child, replId, [...path, index]);
+				});
+				const metatable = expandResponse.result.metatable;
+				if (metatable) {
+					children.push(this.expandRepl(metatable, replId, [...path, -1]));
+				}
+				resolve(children);
+			};
+		}
+		const name = record.name;
+		const v = new StingrayVariable(name, record.value, executor);
+		v.type = record.type;
+		v.presentationHint = {
+			visibility: name === '__metatable' ? 'internal' : name.startsWith('_') ? 'private' : 'public',
+		};
+		const ref = v.variablesReference;
+		if (ref) {
+			this.repl.set(ref, v);
+		}
+		return v;
+	}
 
-        let i = 0;
-        let stack = this.callstack;
-        const frames = new Array<StackFrame>();
-        for (let frame of stack) {
-            let isMapped = frame.source[0] === '@';
-            let resourcePath = isMapped ? frame.source.slice(1) : frame.source;
-            let name = frame.function ? `${frame.function} @ ${resourcePath}:${frame.line}` :
-                                        `${resourcePath}:${frame.line}`;
-            let filePath = this.getResourceFilePath(frame.source);
-            this.log(filePath);
+	/** Retrieves all child variables for the given variable reference. */
+	protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
+		const parent = this.variables.get(args.variablesReference) || this.repl.get(args.variablesReference);
+		if (parent) {
+			parent.children().then((variables) => {
+				response.body = { variables: variables };
+				this.sendResponse(response);
+			});
+		} else {
+			this.sendErrorResponse(response, 1000, 'Expanding variable without children.');
+		}
+	}
 
-            frames.push(new StackFrame(i++, name, new Source(frame.source, filePath), frame.line, 0));
-        }
-        response.body = {
-            stackFrames: frames,
-            totalFrames: frames.length
-        };
-        this.sendResponse(response);
-    }
+	protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
+		response.body = { threads: [ new Thread(THREAD_ID, "Main thread") ] };
+		this.sendResponse(response);
+	}
 
-    // private getResourceFilePath(source: string) {
-    //     let isMapped = source[0] === '@';
-    //     let resourcePath = isMapped ? source.slice(1) : source;
-        
-    //     return join(this.projectRoot, resourcePath);
-    // }
+	/** Send all the stack frames for the `Call Stack` tree view. */
+	protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, _args: DebugProtocol.StackTraceArguments): void {
+		if (!this.callstack) {
+			return this.sendErrorResponse(response, 1000, "No callstack available");
+		}
 
-    private initProjectPaths(toolchainPath : string): void {
-        let tccPath = getToolchainSettingsPath(toolchainPath) || path.join(toolchainPath,"settings","ToolChainConfiguration.config");
-        let tccSJSON = readFileSync(tccPath, 'utf8');
-        let tcc = SJSON.parse(tccSJSON);
-        let projectIndex = tcc.ProjectIndex;
-        let projectData = tcc.Projects[projectIndex];
-        this.projectMapFolder = projectData.SourceDirectory.replace(/^[\/\\]|[\/\\]$/g, '');
+		const frames = this.callstack.map((frame, i) => {
+			const name = frame.function ?? '<unknown>';
+			const filePath = this.getResourceFilePath(frame.source);
+			const sf = new StackFrame(i, name, new Source(frame.source, filePath), frame.line);
+			if (frame.function) {
+				sf.instructionPointerReference = 'dummy';
+			} else {
+				sf.presentationHint = 'subtle';
+			}
+			return sf;
+		});
 
-        // Set project root to resolve scripts.
-        this.projectFolderMaps.set('<project>', this.projectMapFolder);
+		response.body = {
+			stackFrames: frames,
+			totalFrames: frames.length
+		};
+		this.sendResponse(response);
+	}
 
-        // Add core map folder to resolve core scripts
-        let coreMapFolder = toolchainPath;
-        // If SourceRepositoryPath is in the toolchain config use this for core folder instead of default toolchain
-        if (tcc.SourceRepositoryPath !== null) {
-            coreMapFolder = tcc.SourceRepositoryPath;
-        }
-        this.coreMapFolder = path.join(coreMapFolder, 'core');
+	private toResourcePath(src: string): string {
+		return (src[0] === '@') ? src.slice(1) : src;
+	}
 
-        if (fileExists(this.coreMapFolder)) {
-            this.projectFolderMaps.set('core', path.dirname(this.coreMapFolder));
-        }
-    }
+	private initProjectPaths(toolchainPath : string): void {
+		const tccPath = getToolchainSettingsPath(toolchainPath);
+		const tccSJSON = readFileSync(tccPath!, 'utf8');
+		const tcc = SJSON.parse(tccSJSON);
+		const projectData = tcc.Projects[tcc.ProjectIndex];
+		this.projectMapFolder = projectData.SourceDirectory;
 
-    private getResourceFilePath(source: string) {
-        let isMapped = source[0] === '@';
-        let resourcePath = isMapped ? source.slice(1) : source;
-        const projectPath = this.projectFolderMaps.get("<project>");
-        let filePath = projectPath ? path.join(projectPath, resourcePath) : resourcePath;
-        if (isMapped && !fileExists(filePath)) {
-            let mapName = resourcePath.split('/')[0];
-            if (mapName) {
-                const mappedPath = this.projectFolderMaps.get(mapName);
-                if (mappedPath) {
-                    filePath = path.join(mappedPath, resourcePath);
-                }
-            }
-        }
+		// Add core map folder to resolve core scripts
+		// If SourceRepositoryPath is in the toolchain config use this for core folder instead of default toolchain
+		const coreMapFolder = tcc.SourceRepositoryPath ?? toolchainPath;
+		this.coreMapFolder = path.join(coreMapFolder, 'core');
 
-        return filePath;
-    }
+		if (fileExists(this.coreMapFolder)) {
+			this.projectFolderMaps.set('core', path.dirname(this.coreMapFolder));
+		}
+	}
+
+	private getResourceFilePath(source: string) {
+		let isMapped = source[0] === '@';
+		let resourcePath = isMapped ? source.slice(1) : source;
+		const projectPath = this.projectMapFolder;
+		let filePath = projectPath ? path.join(projectPath, resourcePath) : resourcePath;
+		if (isMapped && !fileExists(filePath)) {
+			let mapName = resourcePath.split('/')[0];
+			if (mapName) {
+				const mappedPath = this.projectFolderMaps.get(mapName);
+				if (mappedPath) {
+					filePath = path.join(mappedPath, resourcePath);
+				}
+			}
+		}
+
+		return filePath;
+	}
+
+
+	// STANDARD DEBUGGER REQUESTS //
+	protected pauseRequest(response: DebugProtocol.PauseResponse, _args: DebugProtocol.PauseArguments): void {
+		this.connection?.sendDebuggerCommand('break');
+		this.sendResponse(response);
+	}
+	protected continueRequest(response: DebugProtocol.ContinueResponse, _args: DebugProtocol.ContinueArguments): void {
+		this.connection?.sendDebuggerCommand('continue');
+		this.sendResponse(response);
+	}
+	protected nextRequest(response: DebugProtocol.NextResponse, _args: DebugProtocol.NextArguments): void {
+		this.connection?.sendDebuggerCommand('step_over');
+		this.sendResponse(response);
+	}
+	protected stepInRequest(response: DebugProtocol.StepInResponse, _args: DebugProtocol.StepInArguments): void {
+		this.connection?.sendDebuggerCommand('step_into');
+		this.sendResponse(response);
+	}
+	protected stepOutRequest(response: DebugProtocol.StepOutResponse, _args: DebugProtocol.StepOutArguments): void {
+		this.connection?.sendDebuggerCommand('step_out');
+		this.sendResponse(response);
+	}
 }
 
 DebugSession.run(StingrayDebugSession);
