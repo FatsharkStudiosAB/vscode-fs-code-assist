@@ -201,10 +201,6 @@
           "command": "fatshark-code-assist.stingrayConnect",
           "when": "viewItem == connection-target",
           "group": "inline@1"
-        },
-        {
-          "command": "fatshark-code-assist.stingrayDisconnect",
-          "when": "viewItem == connection-target"
         }
       ]
     },
