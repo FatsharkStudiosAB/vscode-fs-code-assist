@@ -72,9 +72,7 @@ local function format_value(value, name, include_extra_data)
 	}
 end
 
-local env = setmetatable({}, {__index = _G})
-
-local repl_values = {}
+local REPL_REGISTRY = {}
 
 local handlers = {
 	stack = function(request)
@@ -117,37 +115,72 @@ local handlers = {
 		return format_value(resolve_path(value, request.path), true)
 	end,
 	repl = function(request)
-		table.clear(env)
 		local level = request.level
+		-- If a stack level is provided, we have to adjust it skipping all the
+		-- debug stuff that is currently on the stack. This is *very* brittle.
 		if level then
-			level = level + 2
-			local func = debug.getinfo(level, "f").func
-			for i=1, 9999 do -- First upvalues.
-				local name, value = debug.getupvalue(func, i)
-				if not name then break end
-				env[name] = value
-			end
-			for i=1, 9999 do -- Then locals (in order!).
-				local name, value = debug.getlocal(level, i)
-				if not name then break end
-				env[name] = value
-			end
+			level = level + 6
 		end
+
+		local ENVIRONMENT = setmetatable({}, {
+			__index = function(_, target_name)
+				if level then
+					for i=1, 9999 do -- (1) Locals.
+						local name, value = debug.getlocal(level, i)
+						if not name then break end
+						if name == target_name then
+							return value
+						end
+					end
+					local func = debug.getinfo(level, "f").func
+					for i=1, 9999 do -- (2) Upvalues.
+						local name, value = debug.getupvalue(func, i)
+						if not name then break end
+						if name == target_name then
+							return value
+						end
+					end
+				end
+				return rawget(_G, target_name) -- (3) Globals.
+			end,
+			__newindex = function(_, target_name, target_value)
+				if level then
+					for i=1, 9999 do -- (1) Locals.
+						local name = debug.getlocal(level, i)
+						if not name then break end
+						if name == target_name then
+							debug.setlocal(level, i, target_value)
+							return -- Do *not* tail-call here or level will change meaning.
+						end
+					end
+					local func = debug.getinfo(level, "f").func
+					for i=1, 9999 do -- (2) Upvalues.
+						local name, value = debug.getupvalue(func, i)
+						if not name then break end
+						if name == target_name then
+							debug.setupvalue(func, i, target_value)
+							return
+						end
+					end
+				end
+				rawset(_G, target_name, target_value) -- (3) Globals.
+			end,
+		})
+
 		local thunk, err = loadstring("return "..request.expression, "repl")
 		if not thunk then
 			thunk = assert(loadstring(request.expression))
 		end
-		setfenv(thunk, env)
+		setfenv(thunk, ENVIRONMENT)
 		local result = thunk()
-		table.clear(env)
-		local id = #repl_values+1
-		repl_values[id] = result
+		local id = #REPL_REGISTRY+1
+		REPL_REGISTRY[id] = result
 		local response = format_value(result, string.format("repl#%d", id), false)
 		response.id = id
 		return response
 	end,
 	expandRepl = function(request)
-		return format_value(resolve_path(repl_values[request.id], request.path), nil, true)
+		return format_value(resolve_path(REPL_REGISTRY[request.id], request.path), nil, true)
 	end,
 	disassemble = function(request)
 

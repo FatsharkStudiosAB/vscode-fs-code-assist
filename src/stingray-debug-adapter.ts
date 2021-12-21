@@ -1,5 +1,5 @@
 import { DebugProtocol } from 'vscode-debugprotocol';
-import { DebugSession, Breakpoint, Source, OutputEvent, InitializedEvent, StoppedEvent, Thread, BreakpointEvent, StackFrame, Scope, Variable } from 'vscode-debugadapter';
+import { DebugSession, Breakpoint, Source, OutputEvent, InitializedEvent, StoppedEvent, Thread, BreakpointEvent, StackFrame, Scope, Variable, InvalidatedEvent, CompletionItem } from 'vscode-debugadapter';
 import { StingrayConnection } from './stingray-connection';
 import { getCurrentToolchainSettings, getToolchainSettingsPath, uuid4 } from './utils';
 import * as path from 'path';
@@ -34,10 +34,6 @@ class StingrayVariable extends Variable {
 			} else {
 				this._promise = Promise.reject("Object does not have children.");
 			}
-			this._promise = this._promise.then((children) => {
-				children.sort(StingrayVariable.compare); // In-place! Dirty!
-				return children;
-			});
 		}
 		return this._promise;
 	};
@@ -175,6 +171,7 @@ class StingrayDebugSession extends DebugSession {
 		response.body.supportsConfigurationDoneRequest = true;
 		response.body.supportsRestartRequest = true;
 		response.body.supportsSetVariable = false;
+		response.body.supportsCompletionsRequest = true;
 		response.body.supportsDisassembleRequest = true;
 		response.body.exceptionBreakpointFilters = [
 			{
@@ -187,7 +184,36 @@ class StingrayDebugSession extends DebugSession {
 		this.sendEvent(new InitializedEvent());
 	}
 
-	protected async disassembleRequest(response: DebugProtocol.DisassembleResponse, args: DebugProtocol.DisassembleArguments, request?: DebugProtocol.Request): Promise<void> {
+	protected async completionsRequest(response: DebugProtocol.CompletionsResponse, args: DebugProtocol.CompletionsArguments): Promise<void> {
+		const scopes = args.frameId !== undefined ? this.frames.get(args.frameId) : undefined;
+		const path = args.text.match(/[\w_.:]+$/)?.[0].split(/[.:]/);
+		if (path) {
+			path.pop(); // Remove partial match.
+			const variable = await scopes?.[0].resolve(path) || await scopes?.[1].resolve(path);;
+			if (variable) {
+				const children = await variable.children();
+				const targets = children.map((child) => {
+					return {
+						label: child.name,
+						type: child.type === 'function' ? 'method' : 'field',
+					} as DebugProtocol.CompletionItem;
+					// Sometimes the debug adapter stuff gets in the way.
+					// This is one of those cases, in which it doe snot allow setting the type.
+				});
+				const collator = new Intl.Collator();
+				targets.sort((a, b) => collator.compare(a.label, b.label));
+				response.body = { targets: targets };
+			}
+		}
+		this.sendResponse(response);
+	}
+
+	protected setVariableRequest(response: DebugProtocol.SetVariableResponse, args: DebugProtocol.SetVariableArguments): void {
+		this.sendResponse(response);
+	}
+
+
+	protected async disassembleRequest(response: DebugProtocol.DisassembleResponse, args: DebugProtocol.DisassembleArguments): Promise<void> {
 		const disassemble = await this.doRequest("disassemble", {});
 		const instructions = disassemble.result.map((bytecode:any, index:number) => {
 			return {
@@ -253,13 +279,14 @@ class StingrayDebugSession extends DebugSession {
 				};
 			} else {
 				this.sendEvent(new OutputEvent(`${repl.result}\r\n`, 'stderr'));
+				this.sendEvent(new InvalidatedEvent(['variables'], THREAD_ID, args.frameId));
 			}
 
 			break;
 		case 'hover':
 			const scopes = args.frameId !== undefined ? this.frames.get(args.frameId) : undefined;
 			const path = args.expression.split(/[.:]/);
-			const variable = await scopes?.[0].resolve(path);
+			const variable = await scopes?.[0].resolve(path) || await scopes?.[1].resolve(path);
 			if (variable) {
 				response.body = {
 					result: variable.value,
@@ -294,7 +321,7 @@ class StingrayDebugSession extends DebugSession {
 		}
 	}
 
-	protected setExceptionBreakPointsRequest(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments, request?: DebugProtocol.Request): void {
+	protected setExceptionBreakPointsRequest(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments): void {
 		this.sendResponse(response);
 	}
 
@@ -357,7 +384,11 @@ class StingrayDebugSession extends DebugSession {
 				if (name === '(*temporary)') {
 					return;
 				}
-				children.push(this.expandValue(frameId, record, name, []));
+				const variable = this.expandValue(frameId, record, name, []);
+				if (name.startsWith('(')) {
+					variable.presentationHint!.visibility = 'internal';
+				}
+				children.push(variable);
 			});
 			resolve(children);
 		});
@@ -378,9 +409,11 @@ class StingrayDebugSession extends DebugSession {
 						resolve([]);
 					}
 					const table = data.table as EngineCallstackRecord[];
-					resolve(table.map((childRecord, index) => {
+					const children = table.map((childRecord, index) => {
 						return this.expandValue(frameId, childRecord, localName, [...path, index+1]);
-					}));
+					});
+					children.sort(StingrayVariable.compare);
+					resolve(children);
 				});
 
 				this.connection?.sendDebuggerCommand('expand_table', {
@@ -422,6 +455,7 @@ class StingrayDebugSession extends DebugSession {
 				if (metatable) {
 					children.push(this.expandRepl(metatable, replId, [...path, -1]));
 				}
+				children.sort(StingrayVariable.compare);
 				resolve(children);
 			};
 		}

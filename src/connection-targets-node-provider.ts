@@ -50,6 +50,7 @@ export class ConnectionTargetTreeItem extends vscode.TreeItem {
         public readonly port: number,
 	) {
         super(`${name} ${platform} ${ip}:${port}`, vscode.TreeItemCollapsibleState.None);
+        this.tooltip = new vscode.MarkdownString(`**Platform**: ${platform}\n\n**IP**: ${ip}\n\n**Port**: ${port}`);
 	}
 
 	contextValue = 'connection-target';
