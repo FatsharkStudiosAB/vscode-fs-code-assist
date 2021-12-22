@@ -2,10 +2,10 @@
   "name": "fatshark-code-assist",
   "displayName": "Fatshark Code Assist",
   "description": "",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "publisher": "Fatshark",
   "engines": {
-    "vscode": "^1.62.0"
+    "vscode": "^1.63.0"
   },
   "repository": {
     "type": "git",
@@ -337,7 +337,7 @@
         {
           "id": "fs-code-assist",
           "title": "FS Code Assist",
-          "icon": "resources/fs-code-assist.svg"
+          "icon": "resources/fs-code-assist.png"
         }
       ]
     },
