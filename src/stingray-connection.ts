@@ -9,7 +9,6 @@ enum MessageType { // Must be the same as in engine.
 export class StingrayConnection {
 	// Internal state.
 	private _socket : Socket;
-	private _messageHeader = Buffer.alloc(8);
 	private _ready : boolean = false;
 	private _closed : boolean = false;
 	private _error : boolean = false;
@@ -69,12 +68,15 @@ export class StingrayConnection {
 	}
 
 	_send(data: any) {
+		// 2021-12-21: TCP fragmentation crashes the engine so we try to
+		// prevent it by sending a datagram in a single .write() call.
 		const payload = JSON.stringify(data);
 		const length = Buffer.byteLength(payload, "utf8");
-		this._messageHeader.writeInt32BE(MessageType.json, 0);
-		this._messageHeader.writeInt32BE(length, 4);
-		this._socket.write(this._messageHeader);
-		this._socket.write(payload);
+		const buffer = Buffer.alloc(length + 8);
+		buffer.writeInt32BE(MessageType.json, 0);
+		buffer.writeInt32BE(length, 4);
+		buffer.subarray(8).write(payload, 'utf8');
+		this._socket.write(buffer);
 	}
 
 	_onConnect() {
