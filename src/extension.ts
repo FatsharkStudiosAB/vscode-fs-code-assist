@@ -198,8 +198,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.attachDebugger', (element: ConnectedClientTreeItem) => {
 		const connection = element.connection;
 
-		let folder = vscode.workspace.workspaceFolders;
-		if (folder && connection) {
+		if (connection) {
 			const config = vscode.workspace.getConfiguration("StingrayLua");
 			const toolchain = <string|undefined>config.get("toolchainName");
 			if (!toolchain) {
@@ -216,8 +215,7 @@ export function activate(context: vscode.ExtensionContext) {
 				"port" : connection.port,
 			};
 
-			const sourceDir = folder[0];
-			vscode.debug.startDebugging(sourceDir, attachArgs);
+			vscode.debug.startDebugging(undefined, attachArgs);
 		}
 	}));
 

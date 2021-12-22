@@ -280,6 +280,7 @@ local handlers = {
 	end,
 }
 
+cjson = cjson or cjson.stingray_init()
 function VSCodeDebugAdapter(str)
 	local request = cjson.decode(str)
 	local ok, result = pcall(handlers[request.request_type], request)

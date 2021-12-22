@@ -348,9 +348,12 @@ class StingrayDebugSession extends DebugSession {
 			return;
 		}
 
-		const resourcePath = path.relative(this.projectMapFolder, filePath).replace(/\\/g, '/');
-		const validScript = !!resourcePath && !resourcePath.startsWith('..') && !path.isAbsolute(resourcePath);
-		// @TODO: Add support for this.coreMapFolder.
+		let resourcePath = path.relative(this.projectMapFolder, filePath).replace(/\\/g, '/');
+		let validScript = !!resourcePath && !resourcePath.startsWith('..') && !path.isAbsolute(resourcePath);
+		if (!validScript) {
+			resourcePath = path.join('core', path.relative(this.coreMapFolder, filePath)).replace(/\\/g, '/');
+			validScript = !!resourcePath && !resourcePath.startsWith('..') && !path.isAbsolute(resourcePath);
+		}
 
 		// Verify breakpoint locations
 		const vsBreakpoints = clientLines.map(line => {
