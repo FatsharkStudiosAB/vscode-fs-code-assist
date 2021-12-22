@@ -19,7 +19,7 @@ local function to_console_string(value)
 		local where = is_file_func and string.format("%s:%s", info.source, info.linedefined) or (info.addr and string.format("0x%012x", info.addr)) or "<unknown>"
 		str = string.format("<%s at %s>", value, where)
 	elseif kind == "userdata" then
-		str = string.format("{%s: %p}", Script.type_name(value), value)
+		str = tostring(value) --string.format("{%s: %p}", Script.type_name(value), value)
 	else
 		str = string.format("%s", value)
 	end
