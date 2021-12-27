@@ -18,7 +18,7 @@ export type RawSymbolInformation = {
 	char: number,
 };
 
-export const parseFileSymbols = async function*(path: string) {
+const parseFileSymbols = async function*(path: string) {
 	const contents = await readFile(path, { encoding: 'utf8' });
 
 	let line = -1;
@@ -64,25 +64,34 @@ export const parseFileSymbols = async function*(path: string) {
 	}
 };
 
+const taskLookup: { [name: string]: Function } = {
+	parseFileSymbols,
+};
+
 if (!isMainThread) {
 	if (!parentPort) {
 		throw new Error("No parentPort");
 	}
 	//parentPort.on("message", (path: string) => parseFileSymbols(path));
-	workerData?.forEach(async (path: string) => {
-		for await (const symbol of parseFileSymbols(path)) {
-			parentPort?.postMessage(symbol);
+	const { task, chunk } = workerData;
+	const func = taskLookup[task];
+	chunk.forEach(async (data: any) => {
+		for await (const symbol of func(data)) {
+			parentPort!.postMessage(symbol);
 		}
 	});
 }
 
-export class Indexer {
+export class TaskRunner {
 	readonly path = WORKER_PATH;
 	readonly threadCount = WORKER_THREAD_COUNT;
 	private _workers: Worker[] = [];
 
-	constructor(private _data: any[], private _onMessage: { (result: any): void }) {
-	}
+	constructor(
+		private _task: string,
+		private _data: any[],
+		private _onMessage: { (result: any): void }
+	) {}
 
 	abort() {
 		for (const worker of this._workers) {
@@ -104,15 +113,18 @@ export class Indexer {
 		return new Promise<number>((resolve, reject) => {
 			const startTime = performance.now();
 			const chunks = this.toChunks(this._data);
+			const task = this._task;
 			let activeThreads = chunks.length;
 			for (const chunk of chunks) {
-				const worker = new Worker(this.path, { workerData: chunk, });
+				const worker = new Worker(this.path, {
+					workerData: { task, chunk }
+				});
 				this._workers.push(worker);
 				worker.on("error", (err) => {
 					reject(err);
 				});
 				worker.on("message", (msg) => this._onMessage(msg));
-				worker.on("exit", (code) => {
+				worker.on("exit", (_code) => {
 					if (--activeThreads === 0) {
 						resolve(performance.now() - startTime);
 					}

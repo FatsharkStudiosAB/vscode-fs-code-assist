@@ -1,11 +1,13 @@
-import { CancellationToken, Color, ColorInformation, ColorPresentation, CompletionItem, CompletionItemKind, DecorationRangeBehavior, DocumentLink, DocumentSymbol, ExtensionContext, FoldingContext, FoldingRange, FoldingRangeKind, languages, Location, Position, Range, SymbolInformation, SymbolKind, TextDocument, TextDocumentWillSaveEvent, Uri, window, workspace } from "vscode";
-import { RawSymbolInformation, Indexer } from "./project-symbol-indexer";
+import { basename } from "path";
+import { CancellationToken, Color, ColorInformation, ColorPresentation, CompletionItem, CompletionItemKind, DecorationRangeBehavior, DocumentLink, DocumentSymbol, ExtensionContext, FoldingContext, FoldingRange, FoldingRangeKind, Hover, languages, Location, MarkdownString, Position, ProviderResult, Range, SymbolInformation, SymbolKind, TextDocument, TextDocumentWillSaveEvent, Uri, window, workspace } from "vscode";
+import { RawSymbolInformation, TaskRunner } from "./project-symbol-indexer";
 
 const LANGUAGE_SELECTOR = "lua";
 
 class StingrayLuaLanguageServer {
 	private _initialized = false;
 	private _symbols = new Map<String, SymbolInformation[]>();
+	private _textures = new Map<String, Uri>();
 
 	constructor() {
 		workspace.onWillSaveTextDocument(this.onWillSaveTextDocument.bind(this));
@@ -19,20 +21,30 @@ class StingrayLuaLanguageServer {
 			this._symbols.set(name, list);
 		}
 		const location = new Location(Uri.file(path), new Position(line, char));
-		list.push(new SymbolInformation(name, SymbolKind[kind], parent || "", location))
+		list.push(new SymbolInformation(name, SymbolKind[kind], parent || "", location));
 	}
 
 	async symbols() {
+		await this._ensureInitialized();
+		return this._symbols;
+	}
+
+	async textures() {
+		await this._ensureInitialized();
+		return this._textures;
+	}
+
+	async _ensureInitialized() {
 		if (!this._initialized) {
 			this._initialized = true;
 			await this.parseAllLuaFiles();
+			await this.indexTextureFiles();
 		}
-		return this._symbols;
 	}
 
 	async parseAllLuaFiles(token?: CancellationToken) {
 		const uris = await workspace.findFiles("{foundation,scripts}/**/*.lua");
-		const indexer = new Indexer(uris.map((uri) => uri.fsPath), this.pushSymbolData.bind(this));
+		const indexer = new TaskRunner("parseFileSymbols", uris.map((uri) => uri.fsPath), this.pushSymbolData.bind(this));
 		token?.onCancellationRequested(() => {
 			indexer.abort();
 		});
@@ -41,6 +53,13 @@ class StingrayLuaLanguageServer {
 			window.showInformationMessage(`Indexed ${uris.length} files in ${Math.floor(elapsed)} ms using up to ${indexer.threadCount} worker threads.`);
 		} catch (e) {
 			window.showErrorMessage((e as Error).message);
+		}
+	}
+	
+	async indexTextureFiles() {
+		const uris = await workspace.findFiles("{.gui_source_textures,gui/1080p/single_textures}/**/*.png");
+		for (const uri of uris) {
+			this._textures.set(basename(uri.path, ".png"), uri);
 		}
 	}
 
@@ -126,7 +145,7 @@ export function activate(context: ExtensionContext) {
 				//console.log('Unbalanced preprocessor directives!');
 			}
 
-			return foldingRanges;
+			return []; //foldingRanges;// Temporarily disabled because it breaks regular folding.
 		}
 	}));
 
@@ -255,6 +274,39 @@ export function activate(context: ExtensionContext) {
 			}
 
 			return colors;
+		}
+	}));
+
+
+	context.subscriptions.push(languages.registerHoverProvider(LANGUAGE_SELECTOR, {
+		async provideHover(document: TextDocument, position: Position, token: CancellationToken): Promise<Hover | undefined> {
+			const workspaceFolders = workspace.workspaceFolders;
+			const folder = workspaceFolders && workspaceFolders[0];
+			if (!folder) {
+				return;
+			}
+
+			const line = document.lineAt(position.line);
+			const text = line.text;
+			const stringOpen = text.lastIndexOf('"', position.character);
+			const stringClose = text.indexOf('"', position.character);
+			if (stringOpen === -1 || stringClose === -1) {
+				return;
+			}
+			const hoverRange = new Range(
+				new Position(position.line, stringOpen),
+				new Position(position.line, 1+stringClose)
+			);
+			const path = text.substring(1+stringOpen, stringClose);
+			const textures = await server.textures();
+			const uri = textures.get(path);
+			if (!uri) {
+				return;
+			}
+			const mdString = new MarkdownString();
+			mdString.supportHtml = true;
+			mdString.appendMarkdown(`<img src='${uri.toString()}'>`);
+			return new Hover(mdString, hoverRange);
 		}
 	}));
 
