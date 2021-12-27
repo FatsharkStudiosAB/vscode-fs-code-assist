@@ -2,6 +2,7 @@
   "name": "fatshark-code-assist",
   "displayName": "Fatshark Code Assist",
   "description": "",
+  "icon": "resources/fs-code-assist.png",
   "version": "0.1.1",
   "publisher": "Fatshark",
   "engines": {
@@ -337,7 +338,7 @@
         {
           "id": "fs-code-assist",
           "title": "FS Code Assist",
-          "icon": "resources/fs-code-assist.png"
+          "icon": "resources/fs-code-assist.svg"
         }
       ]
     },
