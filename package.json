@@ -211,21 +211,21 @@
       "properties": {
         "StingrayLua.toolchainPath": {
           "type": "string",
-          "scope": "application",
-          "default": "C:/BitSquidBinaries",
-          "description": "Toolchain name, e.g. 'C:/BitSquidBinaries'"
+          "scope": "window",
+          "default": "",
+          "description": "Toolchain name, e.g. `C:/BitSquidBinaries`\nIf empty, will default to `%BS_BINARIES_DIR%`."
         },
         "StingrayLua.toolchainName": {
           "type": "string",
-          "scope": "application",
+          "scope": "window",
           "default": "vermintide2",
-          "description": "Toolchain name, e.g. 'vermintide2'"
+          "description": "Toolchain name, e.g. `vermintide2`"
         },
         "StingrayLua.platform": {
           "type": "string",
-          "scope": "application",
+          "scope": "window",
           "default": "win32",
-          "description": "Platform name, e.g. 'win32', `xb1`, `ps4`"
+          "description": "Platform name, e.g. `win32`, `xb1`, `ps4`"
         }
       }
     },

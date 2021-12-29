@@ -1,6 +1,7 @@
 import { basename } from "path";
 import { CancellationToken, Color, ColorInformation, ColorPresentation, CompletionItem, CompletionItemKind, DecorationRangeBehavior, DocumentLink, DocumentSymbol, ExtensionContext, FoldingContext, FoldingRange, FoldingRangeKind, Hover, languages, Location, MarkdownString, Position, ProviderResult, Range, SymbolInformation, SymbolKind, TextDocument, TextDocumentWillSaveEvent, Uri, window, workspace } from "vscode";
 import { RawSymbolInformation, TaskRunner } from "./project-symbol-indexer";
+import { activate as adoc_autocomplete } from './adoc-autocomplete';
 
 const LANGUAGE_SELECTOR = "lua";
 
@@ -73,6 +74,8 @@ class StingrayLuaLanguageServer {
 
 export function activate(context: ExtensionContext) {
 	const server = new StingrayLuaLanguageServer();
+
+	adoc_autocomplete(context);
 
 	context.subscriptions.push(languages.registerDefinitionProvider(LANGUAGE_SELECTOR, {
 		provideDefinition: async function (document: TextDocument, position: Position, token: CancellationToken): Promise<Location[] | undefined> {

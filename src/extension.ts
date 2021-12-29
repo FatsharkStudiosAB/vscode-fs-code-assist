@@ -3,17 +3,15 @@
 import * as vscode from 'vscode';
 import { ConnectedClientsNodeProvider, ConnectedClientTreeItem } from './connected-clients-node-provider';
 import { connectionHandler, MAX_CONNECTIONS } from './connection-handler';
-import { getCurrentToolchainSettings, getToolchainSettingsPath, uuid4 } from './utils';
+import { getCurrentToolchainSettings, getToolchainSettings, getToolchainSettingsPath, uuid4 } from './utils';
 import * as languageFeatures from './stingray-language-features';
 import { join } from 'path';
 import { ConnectionTargetsNodeProvider, ConnectionTargetTreeItem } from './connection-targets-node-provider';
 
 export function getToolchainPath(toolchain: string) {
 	const config = vscode.workspace.getConfiguration("StingrayLua");
-	const toolchainRoot = <string|undefined>config.get("toolchainPath") || "c:/BitSquidBinaries";
-
-	const path = join(toolchainRoot, toolchain);
-	return path;
+	const toolchainRoot: string = config.get("toolchainPath") || process.env.BsBinariesDir || "C:/BitSquidBinaries";
+	return join(toolchainRoot, toolchain);
 }
 
 let currentConnectedTarget:string|null = null;
@@ -55,7 +53,7 @@ export function activate(context: vscode.ExtensionContext) {
 			let status = 0;
 
 			const compiler = connectionHandler.getCompiler();
-			compiler.onDidReceiveData.add(function onData(data: any) {
+			function onData(data: any) {
 				if (data.id === id && data.finished) {
 					if (data.status === "success") {
 						vscode.commands.executeCommand('fatshark-code-assist.stingrayReloadSources');
@@ -71,9 +69,12 @@ export function activate(context: vscode.ExtensionContext) {
 					progress.report({ increment: increment, message: "Stingray Compile: " + message });
 					status = newStatus;
 				}
-			});
+			};
+
+			compiler.onDidReceiveData.add(onData);
 
 			token.onCancellationRequested(() => {
+				compiler.onDidReceiveData.remove(onData);
 				compiler.sendJSON({
 					"id": id,
 					"type" : "cancel",
@@ -83,19 +84,19 @@ export function activate(context: vscode.ExtensionContext) {
 
 			progress.report({ increment: 0, message: "Stingray Compile: Starting..." });
 
-			let currentTCSettings = getCurrentToolchainSettings(tcPath);
-			const enginePath = toolchainPath.replace(/\\/g, '/');
-			const sourceDir = currentTCSettings.SourceDirectory.replace(/\\/g, '/');
-			const dataDir = join(currentTCSettings.DataDirectoryBase.replace(/\\/g, '/'), platform);
-			compiler.sendJSON({
+			const tcSettings = getToolchainSettings(tcPath);
+			const currentProject = tcSettings.Projects[tcSettings.ProjectIndex];
+			const sourceDir = currentProject.SourceDirectory;
+			const dataDir = join(currentProject.DataDirectoryBase, platform);
+			compiler.sendJSON({ // .replace(/\\/g, '/')
 				"id": id,
 				"type" : "compile",
 				"source-directory" : sourceDir,
 				"source-directory-maps" : [
-					{ "directory" : "core", "root" : enginePath }
+					{ "directory" : "core", "root" : tcSettings.SourceRepositoryPath ?? toolchainPath }
 				],
 				"data-directory" : dataDir,
-				"platform" : currentConnectedTarget || platform,
+				"platform" : currentConnectedTarget ?? platform,
 			});
 		}));
 	}));
