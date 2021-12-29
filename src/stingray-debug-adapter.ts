@@ -22,6 +22,7 @@ const compareWith = (sortOrder: { [key:string]: number; }, a?: string, b?: strin
 class StingrayVariable extends Variable {
 	static refIdIncrementingCounter: RefId = 0;
 	public type?: string;
+	public path?: number[];
 	public presentationHint?: DebugProtocol.VariablePresentationHint;
 	private _promise?: Promise<StingrayVariable[]>;
 
@@ -180,6 +181,9 @@ class StingrayDebugSession extends DebugSession {
 		response.body.supportsSetVariable = false;
 		response.body.supportsCompletionsRequest = true;
 		response.body.supportsDisassembleRequest = false;
+		response.body.supportsFunctionBreakpoints = false;
+		response.body.supportsConditionalBreakpoints = false;
+		response.body.supportsHitConditionalBreakpoints = false;
 		response.body.exceptionBreakpointFilters = [
 			{
 				filter: "error",
@@ -323,6 +327,11 @@ class StingrayDebugSession extends DebugSession {
 		this.connection?.sendDebuggerCommand('continue');
 	}
 
+	protected restartRequest(response: DebugProtocol.RestartResponse, args: DebugProtocol.RestartArguments): void {
+		this.connection?.sendCommand('reboot');
+		this.sendResponse(response);
+	}
+
 	protected disconnectRequest(response: DebugProtocol.DisconnectResponse, _args: DebugProtocol.DisconnectArguments): void {
 		this.shutdown();
 		this.connection?.close();
@@ -337,6 +346,16 @@ class StingrayDebugSession extends DebugSession {
 	}
 
 	protected setExceptionBreakPointsRequest(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments): void {
+		this.sendResponse(response);
+	}
+
+	protected setFunctionBreakPointsRequest(response: DebugProtocol.SetFunctionBreakpointsResponse, args: DebugProtocol.SetFunctionBreakpointsArguments, request?: DebugProtocol.Request): void {
+		const vsBreakpoints = args.breakpoints.map((fBp) => {
+			const bp = <DebugProtocol.Breakpoint>new Breakpoint(false);
+			bp.message = "NYI";
+			return bp;
+		});
+		response.body = { breakpoints: vsBreakpoints };
 		this.sendResponse(response);
 	}
 
@@ -397,7 +416,7 @@ class StingrayDebugSession extends DebugSession {
 	private expandScope(name: string, frameId: FrameId, records: EngineCallstackRecord[]): StingrayVariable {
 		const v = new StingrayVariable(name, "n/a", (resolve) => {
 			const children: StingrayVariable[] = [];
-			records.forEach((record, index) => {
+			records.forEach((record) => {
 				const name = record.key || record.var_name;
 				if (name === '(*temporary)') {
 					return;
@@ -459,9 +478,9 @@ class StingrayDebugSession extends DebugSession {
 		return v;
 	}
 
-	private expandEval(record: any, evalId: number, path: number[]): StingrayVariable {
+	private expandEval(record: any, evalId: number, path: number[], internal?: boolean): StingrayVariable {
 		let executor;
-		if (record.type === 'table') {
+		if (record.type === 'table' || record.type === 'function') {
 			executor = async (resolve: any) => {
 				const expandResponse = await this.command('expandEval', {
 					id: evalId,
@@ -471,7 +490,7 @@ class StingrayDebugSession extends DebugSession {
 					if (child.name.startsWith('(')) {
 						index = -1; // Special magic index.
 					}
-					return this.expandEval(child, evalId, [...path, index]);
+					return this.expandEval(child, evalId, [...path, index], (record.type === 'function'));
 				});
 				children.sort(StingrayVariable.compare);
 				resolve(children);
@@ -481,7 +500,7 @@ class StingrayDebugSession extends DebugSession {
 		const v = new StingrayVariable(name, record.value, executor);
 		v.type = record.type;
 		v.presentationHint = {
-			visibility: name.startsWith('(') ? 'internal' : name.startsWith('_') ? 'private' : 'public',
+			visibility: (internal || name.startsWith('(')) ? 'internal' : name.startsWith('_') ? 'private' : 'public',
 		};
 		const ref = v.variablesReference;
 		if (ref) {
@@ -491,13 +510,12 @@ class StingrayDebugSession extends DebugSession {
 	}
 
 	/** Retrieves all child variables for the given variable reference. */
-	protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
+	protected async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): Promise<void> {
 		const parent = this.variables.get(args.variablesReference) || this.evalRegistry.get(args.variablesReference);
 		if (parent) {
-			parent.children().then((variables) => {
-				response.body = { variables: variables };
-				this.sendResponse(response);
-			});
+			const variables = await parent.children();
+			response.body = { variables: variables };
+			this.sendResponse(response);
 		} else {
 			this.sendErrorResponse(response, 1000, 'Expanding variable without children.');
 		}

@@ -1,10 +1,18 @@
+local function ctlsub(c)
+	if c == "\n" then return "\\n"
+	elseif c == "\r" then return "\\r"
+	elseif c == "\t" then return "\\t"
+	else return string.format("\\%03d", string.byte(c))
+	end
+end
+
 local util = require("jit.util")
 local function to_console_string(value)
 	local kind = type(value)
 	local str
 	if kind == "string" then
 		if string.find(value, "%c") then
-			str = string.format("%q", value)
+			str = string.gsub(string.format("%q", value), ctlsub)
 		else
 			str = value
 		end
@@ -12,12 +20,12 @@ local function to_console_string(value)
 		local mt = getmetatable(value)
 		local class = rawget(value, "___is_class_metatable___") and "class"
 			or (mt and mt ~= true and mt.___is_class_metatable___ and table.find(_G, mt) or "table")
-		str = string.format("[%s: %p]", class, value)
+		str = string.format("%s: %p {…}", class, value)
 	elseif kind == "function" then
-		local info = util.funcinfo(value)
-		local is_file_func = (info.source and not string.find(info.source, "\n"))
-		local where = is_file_func and string.format("%s:%s", info.source, info.linedefined) or (info.addr and string.format("0x%012x", info.addr)) or "<unknown>"
-		str = string.format("<%s at %s>", value, where)
+		--local info = util.funcinfo(value)
+		--local is_file_func = (info.source and not string.find(info.source, "\n"))
+		--local where = is_file_func and string.format("%s:%s", info.source, info.linedefined) or (info.addr and string.format("0x%012x", info.addr)) or "<unknown>"
+		str = string.format("ƒ () at %p", value)
 	elseif kind == "userdata" then
 		str = tostring(value) --string.format("{%s: %p}", Script.type_name(value), value)
 	else
@@ -33,16 +41,20 @@ local function resolve_path(value, path)
 		if part == -1 then -- Special pseudo-path.
 			value = getmetatable(value)
 			goto continue
-		elseif type(value) == "table" then
-			for _, v in pairs(value) do
-				if part == 0 then
-					value = v
-					goto continue
-				end
-				part = part - 1
-			end
 		end
-		do return nil end
+		local kind = type(value)
+		if kind == "function" then
+			value = util.funcinfo(value)
+		elseif kind ~= "table" then
+			return nil
+		end
+		for _, v in pairs(value) do
+			if part == 0 then
+				value = v
+				goto continue
+			end
+			part = part - 1
+		end
 		::continue::
 	end
 	return value
@@ -60,20 +72,25 @@ local function format_value(value, name, include_extra_data)
 	local kind = type(value)
 	local children
 	local metatable
-	if include_extra_data and kind == "table" then
+	if include_extra_data and (kind == "table" or kind == "function") then
 		children = {}
-		for k, v in pairs(value) do
+		local iterationValue = value
+		if kind == "function" then
+			iterationValue = util.funcinfo(value)
+		end
+		for k, v in pairs(iterationValue) do
 			children[#children+1] = format_value(v, k)
 		end
 
-		local mt = getmetatable(value)
-		if mt ~= nil then
-			children[#children+1] = format_value(mt, '(metatable)', false)
+		if kind == "table" then
+			local mt = getmetatable(value)
+			if mt ~= nil then
+				children[#children+1] = format_value(mt, '(metatable)', false)
+			end
+			local asize, hsize = table_size(value)
+			children[#children+1] = format_value(asize, '(size array)', false)
+			children[#children+1] = format_value(hsize, '(size hash)', false)
 		end
-
-		local asize, hsize = table_size(value)
-		children[#children+1] = format_value(asize, '(size array)', false)
-		children[#children+1] = format_value(hsize, '(size hash)', false)
 	end
 	return {
 		name = to_console_string(name),
@@ -81,14 +98,6 @@ local function format_value(value, name, include_extra_data)
 		type = kind,
 		children = children, metatable = metatable,
 	}
-end
-
-local function ctlsub(c)
-	if c == "\n" then return "\\n"
-	elseif c == "\r" then return "\\r"
-	elseif c == "\t" then return "\\t"
-	else return string.format("\\%03d", string.byte(c))
-	end
 end
 
 local sub, gsub, format = string.sub, string.gsub, string.format
