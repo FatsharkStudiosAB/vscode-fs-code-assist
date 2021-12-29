@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { getActiveToolchain } from './extension';
 
 type AdocType = "namespace" | "function" | "constant" | "object" | "enumeration" | "enumerator";
 
@@ -185,7 +186,7 @@ class AdocCompletionFeatures implements
 		if (possibleCompletions.length === 0) {
 			return;
 		}
-	
+
 		return possibleCompletions.map((completion: AdocValue) => {
 				const item = new vscode.CompletionItem(completion.label);
 				const kind = adocToCompletionKind[completion.type];
@@ -218,7 +219,7 @@ class AdocCompletionFeatures implements
 				mdString.appendMarkdown('\n\n---\n\n');
 			}
 			mdString.appendMarkdown(info.desc);
-		} else { // if (info.type === 'namespace' || info.type === 'object') 
+		} else { // if (info.type === 'namespace' || info.type === 'object')
 			mdString.appendCodeblock(`--[[ ${info.type} ]] ${expression} = {…}`);
 			if (info.desc) {
 				mdString.appendMarkdown('\n\n---\n\n' + info.desc);
@@ -254,10 +255,11 @@ class AdocCompletionFeatures implements
 }
 
 export function activate(context: vscode.ExtensionContext) {
-	const config = vscode.workspace.getConfiguration('StingrayLua');
-	const toolchainRoot: string = config.get('toolchainPath') || process.env.BsBinariesDir || 'C:/BitSquidBinaries';
-	const toolchainName: string = config.get('toolchainName') || 'vermintide2';
-	const apiDoc = path.join(toolchainRoot, toolchainName, 'tools_external', 'lua_api_stingray3d.json');
+	const toolchain = getActiveToolchain();
+	if (!toolchain) {
+		return;
+	}
+	const apiDoc = path.join(toolchain.path, 'tools_external', 'lua_api_stingray3d.json');
 
 	const selector = 'lua';
 	const adocCompletionFeatures = new AdocCompletionFeatures(apiDoc);

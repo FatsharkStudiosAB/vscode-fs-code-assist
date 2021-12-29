@@ -10,7 +10,7 @@ Alternatively, if you're developing it you can also clone the repo into `%UserPr
   + Attaches in <100ms instead of taking ~10 seconds (x100 fold improvement).
   + Execute Lua in the current lexical scope via the Debug Console.
   + Basic auto-complete in the debug console.
-  + Expandable tree-view for table values. 
+  + Expandable tree-view for table values.
 + **Lua language features support:**
   + _Go to Definition_ (<kbd>F12</kbd>)
   + _Go to Symbol in Workspace_ (<kbd>Ctrl</kbd>+<kbd>T</kbd>)

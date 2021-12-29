@@ -2,8 +2,8 @@ import { Socket } from 'net';
 import * as utils from './utils';
 
 enum MessageType { // Must be the same as in engine.
-	json = 0,
-	jsonWithBinary = 1,
+	Json = 0,
+	JsonWithBinary = 1,
 }
 
 export class StingrayConnection {
@@ -28,10 +28,12 @@ export class StingrayConnection {
 
 		this._socket = new Socket();
 		this._socket.on("close", this._onClose.bind(this));
-		this._socket.on("connect", this._onConnect.bind(this));
+		this._socket.on("ready", this._onConnect.bind(this));
 		this._socket.connect(this.port, this.ip);
 		this._socket.pause(); // Pull mode.
-		this._pumpMessages();
+		this._pumpMessages().finally(() => {
+			this._socket.destroy();
+		});
 	}
 
 	close() {
@@ -73,7 +75,7 @@ export class StingrayConnection {
 		const payload = JSON.stringify(data);
 		const length = Buffer.byteLength(payload, "utf8");
 		const buffer = Buffer.alloc(length + 8);
-		buffer.writeInt32BE(MessageType.json, 0);
+		buffer.writeInt32BE(MessageType.Json, 0);
 		buffer.writeInt32BE(length, 4);
 		buffer.subarray(8).write(payload, 'utf8');
 		this._socket.write(buffer);
@@ -118,10 +120,10 @@ export class StingrayConnection {
 			// Calculate the length of the JSON and binary payloads.
 			let jsonLength;
 			let binaryLength;
-			if (messageType === MessageType.json) {
+			if (messageType === MessageType.Json) {
 				jsonLength = messageLength;
 				binaryLength = 0;
-			} else if (messageType === MessageType.jsonWithBinary) {
+			} else if (messageType === MessageType.JsonWithBinary) {
 				let binaryOffset = (await this._readBytes(4)).readUInt32BE(0);
 				jsonLength = binaryOffset - 4;
 				binaryLength = messageLength - binaryOffset;

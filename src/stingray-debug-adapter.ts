@@ -1,10 +1,10 @@
-import { DebugProtocol } from 'vscode-debugprotocol';
-import { DebugSession, Breakpoint, Source, OutputEvent, InitializedEvent, StoppedEvent, Thread, BreakpointEvent, StackFrame, Scope, Variable, InvalidatedEvent, CompletionItem } from 'vscode-debugadapter';
-import { StingrayConnection } from './stingray-connection';
-import { getCurrentToolchainSettings, getToolchainSettingsPath, uuid4 } from './utils';
+import { existsSync as fileExists } from 'fs';
+import { readFile } from 'fs/promises';
 import * as path from 'path';
-import { readFileSync, existsSync as fileExists } from 'fs';
-import * as SJSON from 'simplified-json';
+import * as DebugAdapter from 'vscode-debugadapter';
+import { DebugProtocol } from 'vscode-debugprotocol';
+import { StingrayConnection } from './stingray-connection';
+import { StingrayToolchain, uuid4 } from './utils';
 
 /** Map of file paths to line numbers with breakpoints. */
 type StingrayBreakpoints = {
@@ -19,7 +19,7 @@ const compareWith = (sortOrder: { [key:string]: number; }, a?: string, b?: strin
 };
 
 /** A variable or scope pseudo-variable that can be lazily recursively expanded. */
-class StingrayVariable extends Variable {
+class StingrayVariable extends DebugAdapter.Variable {
 	static refIdIncrementingCounter: RefId = 0;
 	public type?: string;
 	public path?: number[];
@@ -84,7 +84,7 @@ type StingrayLaunchRequestArguments = DebugProtocol.LaunchRequestArguments & {
 
 const THREAD_ID = 1;
 
-class StingrayDebugSession extends DebugSession {
+class StingrayDebugSession extends DebugAdapter.DebugSession {
 	connection?: StingrayConnection;
 
 	// Breakpoints.
@@ -106,25 +106,22 @@ class StingrayDebugSession extends DebugSession {
 	loggingEnabled = false;
 
 	// Project information.
-	projectRoot = "";
 	projectFolderMaps = new Map<string, string>();
-	projectMapFolder = "";
-	coreMapFolder  = "";
+	projectMapFolder = '';
+	coreMapFolder = '';
 
 	constructor() {
 		super();
 	}
 
-	/* eslint-disable @typescript-eslint/naming-convention */
-	private command(request_type: string, request_args?: any): Promise<any> {
-		return new Promise((resolve, reject) => {
+	private command(type: string, args?: any): Promise<any> {
+		return new Promise((resolve) => {
 			const request_id = uuid4();
-			const request = { ...request_args, request_type, request_id };
+			const request = { ...args, request_type: type, request_id };
 			this.callbacks.set(request_id, resolve);
 			this.connection?.sendLua(`VSCodeDebugAdapter[===[${JSON.stringify(request)}]===]`);
 		});
 	}
-	/* eslint-enable @typescript-eslint/naming-convention */
 
 	private handleLegacyMessage(data: any) {
 		if (data.message === 'halted') {
@@ -136,10 +133,10 @@ class StingrayDebugSession extends DebugSession {
 				if (bp) {
 					bp.verified = true;
 					haltReason = 'breakpoint';
-					this.sendEvent(new BreakpointEvent('update', bp));
+					this.sendEvent(new DebugAdapter.BreakpointEvent('update', bp));
 				}
 			}
-			this.sendEvent(new StoppedEvent(haltReason, THREAD_ID));
+			this.sendEvent(new DebugAdapter.StoppedEvent(haltReason, THREAD_ID));
 		} else if (data.message === 'callstack') {
 			this.callstack = data.stack;
 			this.variables.clear();
@@ -192,7 +189,6 @@ class StingrayDebugSession extends DebugSession {
 			}
 		];
 		this.sendResponse(response);
-		this.sendEvent(new InitializedEvent());
 	}
 
 	protected async completionsRequest(response: DebugProtocol.CompletionsResponse, args: DebugProtocol.CompletionsArguments): Promise<void> {
@@ -201,7 +197,7 @@ class StingrayDebugSession extends DebugSession {
 			const reply = await this.command('eval', { expression: expression, level: args.frameId, completion: true });
 			if (reply.ok) {
 				const targets: DebugProtocol.CompletionItem[] = [];
-				reply.result.children.forEach((child: any)  => {
+				reply.result.children?.forEach((child: any) => {
 					const key = child.name;
 					if (key.startsWith('(')) {
 						if (key === '(metatable)') {
@@ -243,7 +239,7 @@ class StingrayDebugSession extends DebugSession {
 		const frameId = args.memoryReference.match(/frame#(\d+)/)?.[1];
 		if (frameId) {
 			const reply = await this.command('disassemble', { level: parseInt(frameId, 10) });
-			const source = new Source(reply.result.source, this.getResourceFilePath(reply.result.source));
+			const source = new DebugAdapter.Source(reply.result.source, this.getResourceFilePath(reply.result.source));
 			const instructions = reply.result.bc.map((entry:any, index:number) => {
 				return {
 					address: (index + 1).toFixed(),
@@ -261,33 +257,47 @@ class StingrayDebugSession extends DebugSession {
 		this.sendResponse(response);
 	}
 
-	protected attachRequest(response: DebugProtocol.AttachResponse, args: StingrayAttachRequestArguments): void {
+	protected async attachRequest(response: DebugProtocol.AttachResponse, args: StingrayAttachRequestArguments): Promise<void> {
 		const ip = args.ip;
 		const port = args.port;
-		const tcPath = args.toolchain;
-		if (!tcPath) {
-			this.sendErrorResponse(response, 1000, "No toolchain path.");
+
+		let toolchain: StingrayToolchain;
+		try {
+			toolchain = new StingrayToolchain(args.toolchain);
+		} catch (err) {
+			this.sendErrorResponse(response, 1000, `Error creating Toolchain: ${err}`);
 			return;
 		}
 
-		const tcSettingsPath = getToolchainSettingsPath(tcPath);
-		if (!tcSettingsPath) {
-			this.sendErrorResponse(response, 1000, "No toolchain settings path.");
-			return;
+		const config = await toolchain.config();
+		const currentProject = config.Projects[config.ProjectIndex];
+		this.projectMapFolder = currentProject.SourceDirectory;
+
+		// Add core map folder to resolve core scripts
+		// If SourceRepositoryPath is in the toolchain config use this for core folder instead of default toolchain
+		const coreMapFolder = config.SourceRepositoryPath ?? toolchain.path;
+		this.coreMapFolder = path.join(coreMapFolder, 'core');
+		if (fileExists(this.coreMapFolder)) {
+			this.projectFolderMaps.set('core', path.dirname(this.coreMapFolder));
 		}
 
-		this.initProjectPaths(tcPath);
+		const connection = new StingrayConnection(port, ip);
 
-		const currentTCSettings = getCurrentToolchainSettings(tcSettingsPath);
-		this.projectRoot = currentTCSettings.SourceDirectory.replace(/\\/g, '/').toLowerCase() + '/';
-		this.connection = new StingrayConnection(port, ip);
-		this.connection.sendLua(readFileSync(path.join(__dirname, '../snippets.lua'), 'utf8'));
-		this.connection.onDidReceiveData.add(this.onStingrayMessage.bind(this));
-		this.connection.onDidConnect.add(()=>{
+		connection.onDidReceiveData.add(this.onStingrayMessage.bind(this));
+		connection.onDidConnect.add(async () => {
 			this.log(`Successfully connected to ${ip}:${port}`);
-			this.connection?.sendDebuggerCommand('report_status');
-			this.sendEvent(new InitializedEvent());
+			connection.sendDebuggerCommand('report_status');
+			const snippets = await readFile(path.join(__dirname, '../snippets.lua'), 'utf8');
+			connection.sendLua(snippets);
+			this.sendEvent(new DebugAdapter.InitializedEvent());
+			this.connection = connection;
 			this.sendResponse(response);
+		});
+		connection.onDidDisconnect.add(() => {
+			this.breakpoints.clear();
+			this.callbacks.clear();
+			this.sendEvent(new DebugAdapter.OutputEvent(`Disconnected from ${ip}:${port}`));
+			this.sendEvent(new DebugAdapter.TerminatedEvent());
 		});
 	}
 
@@ -311,8 +321,8 @@ class StingrayDebugSession extends DebugSession {
 			};
 		} else {
 			if (args.context === 'repl') {
-				this.sendEvent(new OutputEvent(`${reply.result}\r\n`, 'stderr'));
-				this.sendEvent(new InvalidatedEvent(['variables'], THREAD_ID, args.frameId));
+				this.sendEvent(new DebugAdapter.OutputEvent(`${reply.result}\r\n`, 'stderr'));
+				this.sendEvent(new DebugAdapter.InvalidatedEvent(['variables'], THREAD_ID, args.frameId));
 			} else if (args.context === 'watch') {
 				response.body = { result: '#ERROR!', variablesReference: 0 };
 			}
@@ -341,7 +351,7 @@ class StingrayDebugSession extends DebugSession {
 
 	private log(message:string) {
 		if (this.loggingEnabled) {
-			this.sendEvent(new OutputEvent(`${message}\r\n`, 'console'));
+			this.sendEvent(new DebugAdapter.OutputEvent(`${message}\r\n`, 'console'));
 		}
 	}
 
@@ -351,7 +361,7 @@ class StingrayDebugSession extends DebugSession {
 
 	protected setFunctionBreakPointsRequest(response: DebugProtocol.SetFunctionBreakpointsResponse, args: DebugProtocol.SetFunctionBreakpointsArguments, request?: DebugProtocol.Request): void {
 		const vsBreakpoints = args.breakpoints.map((fBp) => {
-			const bp = <DebugProtocol.Breakpoint>new Breakpoint(false);
+			const bp = new DebugAdapter.Breakpoint(false) as DebugProtocol.Breakpoint;
 			bp.message = "NYI";
 			return bp;
 		});
@@ -376,7 +386,7 @@ class StingrayDebugSession extends DebugSession {
 
 		// Verify breakpoint locations
 		const vsBreakpoints = clientLines.map(line => {
-			const bp = new Breakpoint(validScript, line, 0, new Source(resourcePath, filePath));
+			const bp = new DebugAdapter.Breakpoint(validScript, line, 0, new DebugAdapter.Source(resourcePath, filePath));
 			bp.setId(this.lastBreakpointId++);
 			return bp;
 		});
@@ -406,8 +416,8 @@ class StingrayDebugSession extends DebugSession {
 		this.frames.set(frameId, [ locals, upvals ]);
 		response.body = {
 			scopes: [
-				new Scope("Locals", locals.variablesReference, false),
-				new Scope("Upvalues", upvals.variablesReference, false),
+				new DebugAdapter.Scope("Locals", locals.variablesReference, false),
+				new DebugAdapter.Scope("Upvalues", upvals.variablesReference, false),
 			]
 		};
 		this.sendResponse(response);
@@ -454,7 +464,8 @@ class StingrayDebugSession extends DebugSession {
 					resolve(children);
 				});
 
-				this.connection?.sendDebuggerCommand('expand_table', {
+				/* eslint-disable @typescript-eslint/naming-convention */
+				const expandTableArg: EngineExpandTable = {
 					node_index: requestIndex,
 					local_num: -1, // Unused by engine.
 					table_path: {
@@ -462,7 +473,10 @@ class StingrayDebugSession extends DebugSession {
 						local: localName,
 						path: path,
 					}
-				});
+				};
+				/* eslint-enable @typescript-eslint/naming-convention */
+
+				this.connection?.sendDebuggerCommand('expand_table', expandTableArg);
 			};
 		}
 		const name = record.key || record.var_name;
@@ -522,7 +536,7 @@ class StingrayDebugSession extends DebugSession {
 	}
 
 	protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
-		response.body = { threads: [ new Thread(THREAD_ID, "Main thread") ] };
+		response.body = { threads: [ new DebugAdapter.Thread(THREAD_ID, "Main thread") ] };
 		this.sendResponse(response);
 	}
 
@@ -535,7 +549,7 @@ class StingrayDebugSession extends DebugSession {
 		const frames = this.callstack.map((frame, i) => {
 			const name = frame.function ?? '<unknown>';
 			const filePath = this.getResourceFilePath(frame.source);
-			const sf = new StackFrame(i, name, new Source(frame.source, filePath), frame.line);
+			const sf = new DebugAdapter.StackFrame(i, name, new DebugAdapter.Source(frame.source, filePath), frame.line);
 			if (frame.function) {
 				sf.instructionPointerReference = `frame#${i}`;
 			} else {
@@ -553,23 +567,6 @@ class StingrayDebugSession extends DebugSession {
 
 	private toResourcePath(src: string): string {
 		return (src[0] === '@') ? src.slice(1) : src;
-	}
-
-	private initProjectPaths(toolchainPath : string): void {
-		const tccPath = getToolchainSettingsPath(toolchainPath);
-		const tccSJSON = readFileSync(tccPath!, 'utf8');
-		const tcc = SJSON.parse(tccSJSON);
-		const projectData = tcc.Projects[tcc.ProjectIndex];
-		this.projectMapFolder = projectData.SourceDirectory;
-
-		// Add core map folder to resolve core scripts
-		// If SourceRepositoryPath is in the toolchain config use this for core folder instead of default toolchain
-		const coreMapFolder = tcc.SourceRepositoryPath ?? toolchainPath;
-		this.coreMapFolder = path.join(coreMapFolder, 'core');
-
-		if (fileExists(this.coreMapFolder)) {
-			this.projectFolderMaps.set('core', path.dirname(this.coreMapFolder));
-		}
 	}
 
 	private getResourceFilePath(source: string) {
@@ -612,4 +609,4 @@ class StingrayDebugSession extends DebugSession {
 	}
 }
 
-DebugSession.run(StingrayDebugSession);
+DebugAdapter.DebugSession.run(StingrayDebugSession);

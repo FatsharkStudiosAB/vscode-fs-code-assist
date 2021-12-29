@@ -12,7 +12,7 @@ local function to_console_string(value)
 	local str
 	if kind == "string" then
 		if string.find(value, "%c") then
-			str = string.gsub(string.format("%q", value), ctlsub)
+			str = string.gsub(string.format("%q", value), "%c", ctlsub)
 		else
 			str = value
 		end

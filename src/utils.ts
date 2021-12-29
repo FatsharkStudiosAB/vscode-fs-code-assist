@@ -1,5 +1,6 @@
-import { join } from "path";
-import {readFileSync, existsSync as fileExists} from 'fs';
+import { existsSync as fileExists } from 'fs';
+import { readFile, stat } from 'fs/promises';
+import { join as pathJoin } from 'path';
 import * as SJSON from 'simplified-json';
 
 /**
@@ -42,21 +43,27 @@ export class Multicast {
 	}
 };
 
-export function getToolchainSettings(toolchainPath: string): any {
-	let tccSJSON = readFileSync(toolchainPath, 'utf8');
-	let tcc = SJSON.parse(tccSJSON);
-	return tcc;
-}
+export class StingrayToolchain {
+	public configPath: string;
+	constructor(
+		public path: string, // Eg, C:/BitsquidBinaries/vermintide2
+	) {
+		this.configPath = pathJoin(this.path, 'settings', 'ToolChainConfiguration.config');
+		if (!fileExists(this.configPath)) {
+			throw new Error('Invalid toolchain');
+		}
+	}
 
-export function getToolchainSettingsPath(toolchainPath: string): string | null {
-	const path = join(toolchainPath, 'settings', 'ToolChainConfiguration.config');
-	return fileExists(path) ? path : null;
-}
+	private configCacheTime: number = 0;
+	private configCacheData: any;
 
-export function getCurrentToolchainSettings(toolchainSettingsPath: string): any {
-	let tccSJSON = readFileSync(toolchainSettingsPath, 'utf8');
-	let tcc = SJSON.parse(tccSJSON);
-	let projectIndex = tcc.ProjectIndex;
-	let projectData = tcc.Projects[projectIndex];
-	return projectData;
+	async config() {
+		const stats = await stat(this.configPath);
+		if (stats.mtimeMs > this.configCacheTime) {
+			const buffer = await readFile(this.configPath, 'utf8');
+			this.configCacheData = SJSON.parse(buffer);
+			this.configCacheTime = stats.mtimeMs;
+		}
+		return this.configCacheData;
+	}
 }

@@ -15,3 +15,14 @@ type EngineCallstackRecord = {
 	var_name: string; // eslint-disable-line @typescript-eslint/naming-convention
 	key?: string;
 };
+
+
+type EngineExpandTable = {
+	node_index: number;
+	local_num: number;
+	table_path: {
+		level: number;
+		local: string;
+		path: number[];
+	};
+};

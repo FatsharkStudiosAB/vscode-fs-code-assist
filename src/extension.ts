@@ -1,18 +1,27 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
+import { join as pathJoin } from 'path';
 import * as vscode from 'vscode';
 import { ConnectedClientsNodeProvider, ConnectedClientTreeItem } from './connected-clients-node-provider';
 import { connectionHandler, MAX_CONNECTIONS } from './connection-handler';
-import { getCurrentToolchainSettings, getToolchainSettings, getToolchainSettingsPath, uuid4 } from './utils';
-import * as languageFeatures from './stingray-language-features';
-import { join } from 'path';
 import { ConnectionTargetsNodeProvider, ConnectionTargetTreeItem } from './connection-targets-node-provider';
+import * as languageFeatures from './stingray-language-features';
+import { StingrayToolchain, uuid4 } from './utils';
 
-export function getToolchainPath(toolchain: string) {
+let _activeToolchain: StingrayToolchain;
+export const getActiveToolchain = () => {
+	if (_activeToolchain) {
+		return _activeToolchain;
+	}
 	const config = vscode.workspace.getConfiguration("StingrayLua");
-	const toolchainRoot: string = config.get("toolchainPath") || process.env.BsBinariesDir || "C:/BitSquidBinaries";
-	return join(toolchainRoot, toolchain);
-}
+	const toolchainRoot: string = config.get("toolchainPath") || process.env.BsBinariesDir || 'C:/BitSquidBinaries';
+	const toolchainName: string = config.get('toolchainName') || 'vermintide2';
+	if (!toolchainRoot || !toolchainName) {
+		return null;
+	}
+	_activeToolchain = new StingrayToolchain(pathJoin(toolchainRoot, toolchainName));
+	return _activeToolchain;
+};
 
 let currentConnectedTarget:string|null = null;
 export function activate(context: vscode.ExtensionContext) {
@@ -26,30 +35,21 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.setStatusBarMessage("Sources reloaded.", 3000);
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayRecompile', () => {
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayRecompile', (element?: ConnectionTargetTreeItem) => {
+		const platform = element?.platform ?? 'win32';
+
 		vscode.window.withProgress({
 			location: vscode.ProgressLocation.Notification
-		}, (progress, token) => new Promise<void>((resolve, reject) => {
-			const id = uuid4();
-			const config = vscode.workspace.getConfiguration("StingrayLua");
-			const toolchainRootPath = <string|undefined>config.get("toolchainPath");
-			const toolchainName = <string|undefined>config.get("toolchainName");
-			const platform = <string|undefined>config.get("platform") || "win32";
-			if (!toolchainRootPath || !toolchainName) {
-				reject();
-				return;
-			}
-
-			const toolchainPath = join(toolchainRootPath, toolchainName);
-
-			let tcPath = getToolchainSettingsPath(toolchainPath);
-			if (!tcPath) {
+		}, (progress, token) => new Promise<void>(async (resolve, reject) => {
+			const toolchain = getActiveToolchain();
+			if (!toolchain) {
 				reject();
 				return;
 			}
 
 			progress.report({ increment: 0, message: "Stingray Compile: Starting..." });
 
+			const id = uuid4();
 			let status = 0;
 
 			const compiler = connectionHandler.getCompiler();
@@ -84,16 +84,16 @@ export function activate(context: vscode.ExtensionContext) {
 
 			progress.report({ increment: 0, message: "Stingray Compile: Starting..." });
 
-			const tcSettings = getToolchainSettings(tcPath);
-			const currentProject = tcSettings.Projects[tcSettings.ProjectIndex];
+			const config = await toolchain.config();
+			const currentProject = config.Projects[config.ProjectIndex];
 			const sourceDir = currentProject.SourceDirectory;
-			const dataDir = join(currentProject.DataDirectoryBase, platform);
+			const dataDir = pathJoin(currentProject.DataDirectoryBase, platform);
 			compiler.sendJSON({ // .replace(/\\/g, '/')
 				"id": id,
 				"type" : "compile",
 				"source-directory" : sourceDir,
 				"source-directory-maps" : [
-					{ "directory" : "core", "root" : tcSettings.SourceRepositoryPath ?? toolchainPath }
+					{ "directory" : "core", "root" : config.SourceRepositoryPath ?? toolchain.path }
 				],
 				"data-directory" : dataDir,
 				"platform" : currentConnectedTarget ?? platform,
@@ -198,26 +198,27 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.attachDebugger', (element: ConnectedClientTreeItem) => {
 		const connection = element.connection;
-
-		if (connection) {
-			const config = vscode.workspace.getConfiguration("StingrayLua");
-			const toolchain = <string|undefined>config.get("toolchainName");
-			if (!toolchain) {
-				return;
-			}
-			let tcPath = getToolchainPath(toolchain);
-
-			const attachArgs = {
-				"type": "stingray_lua",
-				"request": "attach",
-				"name": `Vermintide 2 ${connection.name}`,
-				"toolchain": tcPath,
-				"ip" : connection.ip,
-				"port" : connection.port,
-			};
-
-			vscode.debug.startDebugging(undefined, attachArgs);
+		if (!connection) {
+			vscode.window.showErrorMessage('Command attachDebugger executed in the wrong context.');
+			return;
 		}
+
+		const toolchain = getActiveToolchain();
+		if (!toolchain) {
+			vscode.window.showErrorMessage('No active toolchain.');
+			return;
+		}
+
+		const attachArgs = {
+			"type": "stingray_lua",
+			"request": "attach",
+			"name": `Vermintide 2 ${connection.name}`,
+			"toolchain": toolchain.path,
+			"ip" : connection.ip,
+			"port" : connection.port,
+		};
+
+		vscode.debug.startDebugging(undefined, attachArgs);
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.detachDebugger', (element: ConnectedClientTreeItem) => {
@@ -227,12 +228,12 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}));
 
-	
+
 	// connection targets
 	let connectTargetsNodeProvider = new ConnectionTargetsNodeProvider();
 	let connectTargetTreeView = vscode.window.createTreeView("fs-code-assist-targets", {
-		treeDataProvider: connectTargetsNodeProvider, 
-		showCollapseAll: false, 
+		treeDataProvider: connectTargetsNodeProvider,
+		showCollapseAll: false,
 		canSelectMany: false
 	});
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.refreshTargets', () => {
@@ -242,15 +243,15 @@ export function activate(context: vscode.ExtensionContext) {
 	// Connected clients panel
 	let connectedClientsNodeProvider = new ConnectedClientsNodeProvider();
 	let connectedClientsTreeView = vscode.window.createTreeView("fs-code-assist-clients", {
-		treeDataProvider: connectedClientsNodeProvider, 
-		showCollapseAll: false, 
+		treeDataProvider: connectedClientsNodeProvider,
+		showCollapseAll: false,
 		canSelectMany: true
 	});
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist._refreshConnectedClients', () => {
 		connectedClientsNodeProvider.refresh();
 	}));
-	
+
 	connectedClientsTreeView.onDidChangeSelection( (e)=> {
 		let selection = e.selection;
 		selection.forEach(clientItem => {

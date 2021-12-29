@@ -1,56 +1,45 @@
 // implements tree view UI for connected clients
-import { join } from 'path';
+import * as path from 'path';
 import * as vscode from 'vscode';
-import { getToolchainSettings, getToolchainSettingsPath } from './utils';
+import { getActiveToolchain } from './extension';
 
 export class ConnectionTargetsNodeProvider implements vscode.TreeDataProvider<ConnectionTargetTreeItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<ConnectionTargetTreeItem | undefined | void> = new vscode.EventEmitter<ConnectionTargetTreeItem | undefined | void>();
+	private _onDidChangeTreeData: vscode.EventEmitter<ConnectionTargetTreeItem | undefined | void> = new vscode.EventEmitter<ConnectionTargetTreeItem | undefined | void>();
 	readonly onDidChangeTreeData: vscode.Event<ConnectionTargetTreeItem | undefined | void> = this._onDidChangeTreeData.event;
 
-    getTreeItem(element: ConnectionTargetTreeItem): vscode.TreeItem | Thenable<vscode.TreeItem> {
-        return element;
-    }
-    getChildren(element?: ConnectionTargetTreeItem): vscode.ProviderResult<ConnectionTargetTreeItem[]> {
-        return Promise.resolve(this._gatherConnectionTargets());
-    }
-    refresh(): void {
-		this._onDidChangeTreeData.fire();
+	getTreeItem(element: ConnectionTargetTreeItem): vscode.TreeItem | Thenable<vscode.TreeItem> {
+		return element;
+	}
+	async getChildren(element?: ConnectionTargetTreeItem): Promise<ConnectionTargetTreeItem[] | undefined> {
+		const toolchain = getActiveToolchain();
+		if (!toolchain) {
+			return;
+		}
+
+		const config = await toolchain.config();
+		const treeItems: ConnectionTargetTreeItem[] = [];
+		// eslint-disable-next-line @typescript-eslint/naming-convention
+		config.Targets.forEach((target: { Name: string; Platform: any; Ip: any; Port: any; }) => {
+			const newItem = new ConnectionTargetTreeItem( target.Name, target.Platform, target.Ip, target.Port );
+			treeItems.push(newItem);
+		});
+		return treeItems;
 	}
 
-    private _gatherConnectionTargets() {
-        const config = vscode.workspace.getConfiguration("StingrayLua");
-        const toolchainRootPath = <string|undefined>config.get("toolchainPath");
-        const toolchainName = <string|undefined>config.get("toolchainName");
-        if (!toolchainRootPath || !toolchainName) {
-            return;
-        }
-
-        const toolchainPath = join(toolchainRootPath, toolchainName);
-        let tcPath = getToolchainSettingsPath(toolchainPath);
-        if (!tcPath) {
-            return;
-        }
-        
-        let tcSettings = getToolchainSettings(tcPath);
-        let treeItems: ConnectionTargetTreeItem[] = [];
-        // eslint-disable-next-line @typescript-eslint/naming-convention
-        tcSettings.Targets.forEach((target: { Name: string; Platform: any; Ip: any; Port: any; }) => {
-            let newItem = new ConnectionTargetTreeItem( target.Name, target.Platform, target.Ip, target.Port );
-            treeItems.push( newItem ); 
-        });
-        return treeItems;
-    }
+	refresh(): void {
+		this._onDidChangeTreeData.fire();
+	}
 }
 
 export class ConnectionTargetTreeItem extends vscode.TreeItem {
 	constructor(
-        public readonly name: string,
-        public readonly platform: string,
-        public readonly ip: string,
-        public readonly port: number,
+		public readonly name: string,
+		public readonly platform: string,
+		public readonly ip: string,
+		public readonly port: number,
 	) {
-        super(`${name} ${platform} ${ip}:${port}`, vscode.TreeItemCollapsibleState.None);
-        this.tooltip = new vscode.MarkdownString(`**Platform**: ${platform}\n\n**IP**: ${ip}\n\n**Port**: ${port}`);
+		super(`${name} ${platform} ${ip}:${port}`, vscode.TreeItemCollapsibleState.None);
+		//this.tooltip = new vscode.MarkdownString(`**Platform**: ${platform}\n\n**IP**: ${ip}\n\n**Port**: ${port}`);
 	}
 
 	contextValue = 'connection-target';

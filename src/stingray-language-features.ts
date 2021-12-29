@@ -56,7 +56,7 @@ class StingrayLuaLanguageServer {
 			window.showErrorMessage((e as Error).message);
 		}
 	}
-	
+
 	async indexTextureFiles() {
 		const uris = await workspace.findFiles("{.gui_source_textures,gui/1080p/single_textures}/**/*.png");
 		for (const uri of uris) {
@@ -182,7 +182,7 @@ export function activate(context: ExtensionContext) {
 				const methodMatches = METHOD_REGEX.exec(text);
 				if (methodMatches) {
 					const [_, mClass, mMethod, mArgs] = methodMatches;
-					const kind = (mMethod === "init") ? SymbolKind.Constructor : SymbolKind.Method;					
+					const kind = (mMethod === "init") ? SymbolKind.Constructor : SymbolKind.Method;
 					const symbol = new DocumentSymbol(mMethod, mClass, kind, range, selectionRange);
 					const parent = symbolLookup.get(mClass);
 					if (parent) {
@@ -273,7 +273,6 @@ export function activate(context: ExtensionContext) {
 					const range = new Range(i, indices[0][0], i, indices[0][1]);
 					colors.push(new ColorInformation(range, color));
 				}
-				
 			}
 
 			return colors;
