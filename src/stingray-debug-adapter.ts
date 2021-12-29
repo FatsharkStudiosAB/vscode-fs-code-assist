@@ -547,9 +547,16 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		}
 
 		const frames = this.callstack.map((frame, i) => {
-			const name = frame.function ?? '<unknown>';
-			const filePath = this.getResourceFilePath(frame.source);
-			const sf = new DebugAdapter.StackFrame(i, name, new DebugAdapter.Source(frame.source, filePath), frame.line);
+			const name = frame.function ?? 'λ';
+			let source;
+			if (frame.source !== '=') {
+				const filePath = this.getResourceFilePath(frame.source);
+				source = new DebugAdapter.Source(frame.source, filePath);
+				if (!filePath) {
+					(source as DebugProtocol.Source).presentationHint = 'deemphasize';
+				}
+			}
+			const sf = new DebugAdapter.StackFrame(i, name, source, frame.line);
 			if (frame.function) {
 				sf.instructionPointerReference = `frame#${i}`;
 			} else {
@@ -569,21 +576,26 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		return (src[0] === '@') ? src.slice(1) : src;
 	}
 
-	private getResourceFilePath(source: string) {
+	private getResourceFilePath(source: string): string | undefined {
 		let isMapped = source[0] === '@';
 		let resourcePath = isMapped ? source.slice(1) : source;
 		const projectPath = this.projectMapFolder;
-		let filePath = projectPath ? path.join(projectPath, resourcePath) : resourcePath;
-		if (isMapped && !fileExists(filePath)) {
-			let mapName = resourcePath.split('/')[0];
+		const filePath = projectPath ? path.join(projectPath, resourcePath) : resourcePath;
+		if (fileExists(filePath)) {
+			return filePath;
+		}
+
+		if (isMapped) {
+			const mapName = resourcePath.split('/')[0];
 			if (mapName) {
 				const mappedPath = this.projectFolderMaps.get(mapName);
 				if (mappedPath) {
-					filePath = path.join(mappedPath, resourcePath);
+					return path.join(mappedPath, resourcePath);
 				}
 			}
 		}
-		return filePath;
+
+		return undefined;
 	}
 
 	// STANDARD DEBUGGER REQUESTS //

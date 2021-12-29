@@ -13,8 +13,8 @@ export const getActiveToolchain = () => {
 	if (_activeToolchain) {
 		return _activeToolchain;
 	}
-	const config = vscode.workspace.getConfiguration("StingrayLua");
-	const toolchainRoot: string = config.get("toolchainPath") || process.env.BsBinariesDir || 'C:/BitSquidBinaries';
+	const config = vscode.workspace.getConfiguration('StingrayLua');
+	const toolchainRoot: string = config.get('toolchainPath') || process.env.BsBinariesDir || 'C:/BitSquidBinaries';
 	const toolchainName: string = config.get('toolchainName') || 'vermintide2';
 	if (!toolchainRoot || !toolchainName) {
 		return null;
@@ -23,9 +23,26 @@ export const getActiveToolchain = () => {
 	return _activeToolchain;
 };
 
-let currentConnectedTarget:string|null = null;
+const updateIsStingrayProject = async () => {
+	let bool = false;
+	const workspaceRootPath = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+	if (workspaceRootPath) {
+		const toolchain = getActiveToolchain();
+		if (toolchain) {
+			const config = await toolchain.config();
+			bool = config.Projects.some((project: any) => {
+				return project.SourceDirectory.toUpperCase() === workspaceRootPath.toUpperCase();
+			});
+		}
+	}
+	vscode.commands.executeCommand('setContext', 'fatshark-code-assist:isStingrayProject', bool);
+};
+
 export function activate(context: vscode.ExtensionContext) {
 	languageFeatures.activate(context);
+
+	vscode.workspace.onDidChangeWorkspaceFolders(updateIsStingrayProject);
+	updateIsStingrayProject();
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayReloadSources', () => {
 		connectionHandler.getAllGames().forEach(game => {
@@ -35,8 +52,13 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.setStatusBarMessage("Sources reloaded.", 3000);
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayRecompile', (element?: ConnectionTargetTreeItem) => {
-		const platform = element?.platform ?? 'win32';
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayRecompile', (arg?: ConnectionTargetTreeItem | string) => {
+		let platform = 'win32';
+		if (typeof arg === 'string') {
+			platform = arg;
+		} else if (arg instanceof ConnectionTargetTreeItem) {
+			platform = arg.platform;
+		}
 
 		vscode.window.withProgress({
 			location: vscode.ProgressLocation.Notification
@@ -96,21 +118,18 @@ export function activate(context: vscode.ExtensionContext) {
 					{ "directory" : "core", "root" : config.SourceRepositoryPath ?? toolchain.path }
 				],
 				"data-directory" : dataDir,
-				"platform" : currentConnectedTarget ?? platform,
+				"platform" : platform,
 			});
 		}));
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayConnect', (element?) => {
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayConnect', (element?: ConnectionTargetTreeItem) => {
 		connectionHandler.getCompiler();
 		if (element) {
-			const targetSettings = element as ConnectionTargetTreeItem;
-			const port = targetSettings.platform === "win32" ? 14000 : targetSettings.port;
-			const maxConnections = targetSettings.platform === "win32" ? MAX_CONNECTIONS : 1;
-			currentConnectedTarget = targetSettings.platform;
-			connectionHandler.connectAllGames(port, maxConnections, targetSettings.ip);
+			const port = element.platform === "win32" ? 14000 : element.port;
+			const maxConnections = element.platform === "win32" ? MAX_CONNECTIONS : 1;
+			connectionHandler.connectAllGames(port, maxConnections, element.ip);
 		} else {
-			currentConnectedTarget = "win32";
 			connectionHandler.connectAllGames(14000, MAX_CONNECTIONS);
 		}
 	}));
@@ -240,6 +259,12 @@ export function activate(context: vscode.ExtensionContext) {
 		connectTargetsNodeProvider.refresh();
 	}));
 
+	connectTargetTreeView.onDidChangeSelection((e) => {
+		e.selection.forEach(clientItem => {
+			clientItem.connectToAll();
+		});
+	});
+
 	// Connected clients panel
 	let connectedClientsNodeProvider = new ConnectedClientsNodeProvider();
 	let connectedClientsTreeView = vscode.window.createTreeView("fs-code-assist-clients", {
@@ -252,7 +277,7 @@ export function activate(context: vscode.ExtensionContext) {
 		connectedClientsNodeProvider.refresh();
 	}));
 
-	connectedClientsTreeView.onDidChangeSelection( (e)=> {
+	connectedClientsTreeView.onDidChangeSelection((e) => {
 		let selection = e.selection;
 		selection.forEach(clientItem => {
 			clientItem.focusOutput();

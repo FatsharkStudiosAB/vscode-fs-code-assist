@@ -1,9 +1,9 @@
 {
   "name": "fatshark-code-assist",
   "displayName": "Fatshark Code Assist",
-  "description": "",
+  "description": "Stingray Intellisense, debugging and code browsing.",
   "icon": "resources/fs-code-assist.png",
-  "version": "0.1.1",
+  "version": "0.1.5",
   "publisher": "Fatshark",
   "engines": {
     "vscode": "^1.63.0"
@@ -31,14 +31,15 @@
     "onCommand:fatshark-code-assist.stingrayConnect",
     "onCommand:fatshark-code-assist.stingrayRecompile",
     "onLanguage:lua",
-    "onLanguage:sjson"
+    "onLanguage:sjson",
+    "onTaskType:stingray_lua"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "fatshark-code-assist.stingrayConnect",
-        "title": "Connect All",
+        "title": "Connect to All",
         "category": "Stingray",
         "icon": "$(run-all)"
       },
@@ -115,7 +116,7 @@
       },
       {
         "command": "fatshark-code-assist.refreshTargets",
-        "title": "Refresh list",
+        "title": "Refresh connection targets",
         "category": "Stingray",
         "icon": "$(refresh)"
       }
@@ -160,19 +161,9 @@
       ],
       "view/title": [
         {
-          "command": "fatshark-code-assist.stingrayRecompile",
-          "group": "navigation",
-          "when": "view == fs-code-assist-targets"
-        },
-        {
-          "command": "fatshark-code-assist.stingrayReloadSources",
-          "group": "navigation",
-          "when": "view == fs-code-assist-targets"
-        },
-        {
           "command": "fatshark-code-assist.refreshTargets",
           "group": "navigation",
-          "when": "view == fs-code-assist-clients"
+          "when": "view == fs-code-assist-targets"
         }
       ],
       "view/item/context": [
@@ -200,6 +191,10 @@
         },
         {
           "command": "fatshark-code-assist.stingrayConnect",
+          "when": "viewItem == connection-target"
+        },
+        {
+          "command": "fatshark-code-assist.stingrayRecompile",
           "when": "viewItem == connection-target",
           "group": "inline@1"
         }
@@ -213,19 +208,19 @@
           "type": "string",
           "scope": "window",
           "default": "",
-          "description": "Toolchain name, e.g. `C:/BitSquidBinaries`\nIf empty, will default to `%BS_BINARIES_DIR%`."
+          "description": "Toolchain root, e.g. `C:/BitSquidBinaries`\nDefaults to `%BsBinariesDir%` or `C:/BitSquidBinaries`."
         },
         "StingrayLua.toolchainName": {
           "type": "string",
           "scope": "window",
           "default": "vermintide2",
-          "description": "Toolchain name, e.g. `vermintide2`"
+          "description": "Toolchain name, e.g. `vermintide2`.\nDefaults to `vermintide2`."
         },
         "StingrayLua.platform": {
           "type": "string",
           "scope": "window",
           "default": "win32",
-          "description": "Platform name, e.g. `win32`, `xb1`, `ps4`"
+          "description": "Default platform name, e.g. `win32`, `xb1`, `ps4`.\nDefaults to `win32`."
         }
       }
     },
@@ -338,7 +333,8 @@
         {
           "id": "fs-code-assist",
           "title": "FS Code Assist",
-          "icon": "resources/fs-code-assist.svg"
+          "icon": "resources/fs-code-assist.svg",
+          "when": "fatshark-code-assist:isStingrayProject"
         }
       ]
     },
@@ -346,11 +342,13 @@
       "fs-code-assist": [
         {
           "id": "fs-code-assist-targets",
-          "name": "Connection Targets"
+          "name": "Connection Targets",
+          "when": "fatshark-code-assist:isStingrayProject"
         },
         {
           "id": "fs-code-assist-clients",
-          "name": "Connected Clients"
+          "name": "Connected Clients",
+          "when": "fatshark-code-assist:isStingrayProject"
         }
       ]
     },

@@ -1,5 +1,4 @@
 // implements tree view UI for connected clients
-import * as path from 'path';
 import * as vscode from 'vscode';
 import { getActiveToolchain } from './extension';
 
@@ -17,11 +16,8 @@ export class ConnectionTargetsNodeProvider implements vscode.TreeDataProvider<Co
 		}
 
 		const config = await toolchain.config();
-		const treeItems: ConnectionTargetTreeItem[] = [];
-		// eslint-disable-next-line @typescript-eslint/naming-convention
-		config.Targets.forEach((target: { Name: string; Platform: any; Ip: any; Port: any; }) => {
-			const newItem = new ConnectionTargetTreeItem( target.Name, target.Platform, target.Ip, target.Port );
-			treeItems.push(newItem);
+		const treeItems: ConnectionTargetTreeItem[] = config.Targets.map((target: { Name: string; Platform: any; Ip: any; Port: any; }) => {
+			return new ConnectionTargetTreeItem(target.Name, target.Platform, target.Ip, target.Port);
 		});
 		return treeItems;
 	}
@@ -38,9 +34,28 @@ export class ConnectionTargetTreeItem extends vscode.TreeItem {
 		public readonly ip: string,
 		public readonly port: number,
 	) {
-		super(`${name} ${platform} ${ip}:${port}`, vscode.TreeItemCollapsibleState.None);
-		//this.tooltip = new vscode.MarkdownString(`**Platform**: ${platform}\n\n**IP**: ${ip}\n\n**Port**: ${port}`);
+		super({
+			label: `${name} [${platform}]`,
+			//highlights: [[0, name.length]]
+		}, vscode.TreeItemCollapsibleState.None);
+		this.tooltip = new vscode.MarkdownString();
+		this.tooltip.appendCodeblock(name);
+		const recompileUri = vscode.Uri.parse(
+			`command:fatshark-code-assist.stingrayRecompile?${encodeURIComponent(JSON.stringify(platform))}`
+		);
+		this.tooltip.appendMarkdown([
+			`---`,
+			`**Address**: \`${ip}:${port}\`  `,
+			`**Platform**: ${platform} ([Recompile](${recompileUri}))`,
+		].join('\n'));
+		this.tooltip.isTrusted = true;
+		this.tooltip.supportThemeIcons = true;
+	}
+
+	connectToAll() {
+		vscode.commands.executeCommand('fatshark-code-assist.stingrayConnect', this);
 	}
 
 	contextValue = 'connection-target';
+	iconPath = new vscode.ThemeIcon('vm');
 }

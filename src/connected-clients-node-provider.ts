@@ -19,13 +19,12 @@ export class ConnectedClientsNodeProvider implements vscode.TreeDataProvider<Con
 
 	private _gatherClientConnections() {
 		const openConnections = connectionHandler.getAllGames();
-		const treeItems: ConnectedClientTreeItem[] = [];
-		openConnections.forEach(connection => {
-			const newItem = new ConnectedClientTreeItem(
+		const treeItems: ConnectedClientTreeItem[] = openConnections.map(connection => {
+			return new ConnectedClientTreeItem(
 				connection.name,
 				connectionHandler.getOutputForConnection(connection) as vscode.OutputChannel,
-				connection );
-			treeItems.push(newItem);
+				connection
+			);
 		});
 		return treeItems;
 	}

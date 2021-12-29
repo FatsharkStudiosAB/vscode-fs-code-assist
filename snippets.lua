@@ -2,6 +2,8 @@ local function ctlsub(c)
 	if c == "\n" then return "\\n"
 	elseif c == "\r" then return "\\r"
 	elseif c == "\t" then return "\\t"
+	--elseif c == "\\" then return "\\\\"
+	--elseif c == "\"" then return "\\\""
 	else return string.format("\\%03d", string.byte(c))
 	end
 end
@@ -20,12 +22,12 @@ local function to_console_string(value)
 		local mt = getmetatable(value)
 		local class = rawget(value, "___is_class_metatable___") and "class"
 			or (mt and mt ~= true and mt.___is_class_metatable___ and table.find(_G, mt) or "table")
-		str = string.format("%s: %p {…}", class, value)
+		str = string.format("%s {…}: %p ", class, value)
 	elseif kind == "function" then
 		--local info = util.funcinfo(value)
 		--local is_file_func = (info.source and not string.find(info.source, "\n"))
 		--local where = is_file_func and string.format("%s:%s", info.source, info.linedefined) or (info.addr and string.format("0x%012x", info.addr)) or "<unknown>"
-		str = string.format("ƒ () at %p", value)
+		str = string.format("ƒ (): %p", value)
 	elseif kind == "userdata" then
 		str = tostring(value) --string.format("{%s: %p}", Script.type_name(value), value)
 	else
@@ -68,33 +70,38 @@ local function table_size(t)
 	return ptr[6], ptr[7]
 end
 
-local function format_value(value, name, include_extra_data)
+local function format_value(value, name, include_children, is_nested)
 	local kind = type(value)
 	local children
 	local metatable
-	if include_extra_data and (kind == "table" or kind == "function") then
-		children = {}
-		local iterationValue = value
-		if kind == "function" then
-			iterationValue = util.funcinfo(value)
-		end
-		for k, v in pairs(iterationValue) do
-			children[#children+1] = format_value(v, k)
-		end
-
-		if kind == "table" then
-			local mt = getmetatable(value)
-			if mt ~= nil then
-				children[#children+1] = format_value(mt, '(metatable)', false)
+	if include_children then
+		if kind == "table" or kind == "function" then
+			children = {}
+			local iterationValue = value
+			if kind == "function" then
+				iterationValue = util.funcinfo(value)
 			end
-			local asize, hsize = table_size(value)
-			children[#children+1] = format_value(asize, '(size array)', false)
-			children[#children+1] = format_value(hsize, '(size hash)', false)
+			for k, v in pairs(iterationValue) do
+				children[#children+1] = format_value(v, k)
+			end
+			if kind == "table" then
+				local mt = getmetatable(value)
+				if mt ~= nil then
+					children[#children+1] = format_value(mt, '(metatable)')
+				end
+				local asize, hsize = table_size(value)
+				children[#children+1] = format_value(asize, '(size array)')
+				children[#children+1] = format_value(hsize, '(size hash)')
+			end
 		end
+	end
+	local value_str
+	if not is_nested and kind == "string" then
+		value_str = string.gsub(string.format("%q", value), "\\9%f[%D]", "\t")
 	end
 	return {
 		name = to_console_string(name),
-		value = to_console_string(value),
+		value = value_str or to_console_string(value),
 		type = kind,
 		children = children, metatable = metatable,
 	}
@@ -259,15 +266,16 @@ local handlers = {
 		local environment = request.level and make_environment(request.level + (3+2)) or _G
 		setfenv(thunk, environment)
 		local result = thunk()
-		local response = format_value(result, eval_name, not not request.completion)
-		if not request.completion then
+		local completion = request.completion
+		local response = format_value(result, eval_name, completion)
+		if not completion then
 			EVAL_REGISTRY[id] = result
 			response.id = id
 		end
 		return response
 	end,
 	expandEval = function(request)
-		return format_value(resolve_path(EVAL_REGISTRY[request.id], request.path), nil, true)
+		return format_value(resolve_path(EVAL_REGISTRY[request.id], request.path), nil, true, true)
 	end,
 	disassemble = function(request)
 		local info = debug.getinfo(request.level+4, "fS")
