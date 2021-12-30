@@ -1,17 +1,20 @@
 import { basename } from "path";
-import { CancellationToken, Color, ColorInformation, ColorPresentation, CompletionItem, CompletionItemKind, DecorationRangeBehavior, DocumentLink, DocumentSymbol, ExtensionContext, FoldingContext, FoldingRange, FoldingRangeKind, Hover, languages, Location, MarkdownString, Position, ProviderResult, Range, SymbolInformation, SymbolKind, TextDocument, TextDocumentWillSaveEvent, Uri, window, workspace } from "vscode";
+import * as SJSON from 'simplified-json';
+import { TextDecoder } from "util";
+import * as vscode from "vscode";
+import { activate as activateAdocAutocomplete } from './adoc-autocomplete';
 import { RawSymbolInformation, TaskRunner } from "./project-symbol-indexer";
-import { activate as adoc_autocomplete } from './adoc-autocomplete';
+import { BooleanEvaluator } from "./utils";
 
 const LANGUAGE_SELECTOR = "lua";
 
 class StingrayLuaLanguageServer {
 	private _initialized = false;
-	private _symbols = new Map<String, SymbolInformation[]>();
-	private _textures = new Map<String, Uri>();
+	private _symbols = new Map<String, vscode.SymbolInformation[]>();
+	private _textures = new Map<String, vscode.Uri>();
 
 	constructor() {
-		workspace.onWillSaveTextDocument(this.onWillSaveTextDocument.bind(this));
+		vscode.workspace.onWillSaveTextDocument(this.onWillSaveTextDocument.bind(this));
 	}
 
 	pushSymbolData(symbol: RawSymbolInformation) {
@@ -21,8 +24,8 @@ class StingrayLuaLanguageServer {
 			list = [];
 			this._symbols.set(name, list);
 		}
-		const location = new Location(Uri.file(path), new Position(line, char));
-		list.push(new SymbolInformation(name, SymbolKind[kind], parent || "", location));
+		const location = new vscode.Location(vscode.Uri.file(path), new vscode.Position(line, char));
+		list.push(new vscode.SymbolInformation(name, vscode.SymbolKind[kind], parent || "", location));
 	}
 
 	async symbols() {
@@ -43,28 +46,28 @@ class StingrayLuaLanguageServer {
 		}
 	}
 
-	async parseAllLuaFiles(token?: CancellationToken) {
-		const uris = await workspace.findFiles("{foundation,scripts}/**/*.lua");
+	async parseAllLuaFiles(token?: vscode.CancellationToken) {
+		const uris = await vscode.workspace.findFiles("{foundation,scripts}/**/*.lua");
 		const indexer = new TaskRunner("parseFileSymbols", uris.map((uri) => uri.fsPath), this.pushSymbolData.bind(this));
 		token?.onCancellationRequested(() => {
 			indexer.abort();
 		});
 		try {
 			const elapsed = await indexer.run();
-			window.showInformationMessage(`Indexed ${uris.length} files in ${Math.floor(elapsed)} ms using up to ${indexer.threadCount} worker threads.`);
+			vscode.window.showInformationMessage(`Indexed ${uris.length} files in ${Math.floor(elapsed)} ms using up to ${indexer.threadCount} worker threads.`);
 		} catch (e) {
-			window.showErrorMessage((e as Error).message);
+			vscode.window.showErrorMessage((e as Error).message);
 		}
 	}
 
 	async indexTextureFiles() {
-		const uris = await workspace.findFiles("{.gui_source_textures,gui/1080p/single_textures}/**/*.png");
+		const uris = await vscode.workspace.findFiles("{.gui_source_textures,gui/1080p/single_textures}/**/*.png");
 		for (const uri of uris) {
 			this._textures.set(basename(uri.path, ".png"), uri);
 		}
 	}
 
-	onWillSaveTextDocument(event: TextDocumentWillSaveEvent) {
+	onWillSaveTextDocument(event: vscode.TextDocumentWillSaveEvent) {
 		if (event.document.languageId === "lua") {
 			//this.parseLuaFile(event.document.uri);
 		}
@@ -72,13 +75,13 @@ class StingrayLuaLanguageServer {
 }
 
 
-export function activate(context: ExtensionContext) {
+export function activate(context: vscode.ExtensionContext) {
 	const server = new StingrayLuaLanguageServer();
 
-	adoc_autocomplete(context);
+	activateAdocAutocomplete(context);
 
-	context.subscriptions.push(languages.registerDefinitionProvider(LANGUAGE_SELECTOR, {
-		provideDefinition: async function (document: TextDocument, position: Position, token: CancellationToken): Promise<Location[] | undefined> {
+	context.subscriptions.push(vscode.languages.registerDefinitionProvider(LANGUAGE_SELECTOR, {
+		async provideDefinition(document, position) {
 			const wordRange = document.getWordRangeAtPosition(position, /[\w_]+/);
 			if (!wordRange) {
 				return undefined;
@@ -89,66 +92,126 @@ export function activate(context: ExtensionContext) {
 		}
 	}));
 
-	context.subscriptions.push(languages.registerWorkspaceSymbolProvider({
-		provideWorkspaceSymbols: async function (query: string, token: CancellationToken): Promise<SymbolInformation[] | undefined> {
+	context.subscriptions.push(vscode.languages.registerWorkspaceSymbolProvider({
+		async provideWorkspaceSymbols(query) {
 			const symbols = await server.symbols();
 			query = query.toLowerCase();
-			let result: SymbolInformation[] = [];
+			let result: vscode.SymbolInformation[] = [];
 			for (const [key, symbolList] of symbols) {
 				if (key.toLowerCase().includes(query)) {
-					result = result.concat(symbolList);
+					result.push(...symbolList);
 				}
 			}
 			return result;
 		}
 	}));
 
-
-	const IF_BEGIN_REGEX = /^\s*--IF_BEGIN/;
-	const IF_END_REGEX = /^\s*--IF_END/;
-	const IF_LINE_REGEX = /--IF_LINE/;
-
-	const preprocessorDimDecoration = window.createTextEditorDecorationType({
-		opacity: "0.75",
+	const preprocessorDimDecoration = vscode.window.createTextEditorDecorationType({
+		opacity: "0.62",
 		//backgroundColor: backgroundColor,
 		//color: color,
-		rangeBehavior: DecorationRangeBehavior.OpenOpen
+		rangeBehavior: vscode.DecorationRangeBehavior.OpenOpen
 	});
 
-	context.subscriptions.push(languages.registerFoldingRangeProvider(LANGUAGE_SELECTOR, {
-		provideFoldingRanges(document: TextDocument, context: FoldingContext, token: CancellationToken) {
+	const countIndent = (text: string, tabSize: number) => {
+		let n = 0;
+		for (const char of text) {
+			if (char === ' ') {
+				++n;
+			} else if (char === '\t') {
+				n += tabSize - n % tabSize;
+			} else {
+				return n;
+			}
+		}
+		return -1;
+	};
+
+	const getFeatureTags = async () => {
+		const workspaceFolders = vscode.workspace.workspaceFolders;
+		const folder = workspaceFolders && workspaceFolders[0];
+		if (!folder) {
+			return;
+		}
+		const preprocessorConfigPath = vscode.Uri.joinPath(folder.uri, 'lua_preprocessor_defines.config');
+		const preprocessorConfigBuffer = await vscode.workspace.fs.readFile(preprocessorConfigPath);
+		const decoder = new TextDecoder("utf-8");
+		const preprocessorConfig = SJSON.parse(decoder.decode(preprocessorConfigBuffer));
+		return preprocessorConfig.valid_tags;
+	};
+
+	context.subscriptions.push(vscode.languages.registerFoldingRangeProvider(LANGUAGE_SELECTOR, {
+		async provideFoldingRanges(document, _context, _token) {
 			const foldingRanges = [];
 			const decoratorRanges = [];
-			const regionStack = [];
+			const regionStack: [number, boolean|null][] = [];
+			const indentStack: number[] = [];
+			let lastIndent = 0;
+
+			const featureTags = await getFeatureTags();
+			const evaluator = new BooleanEvaluator(featureTags);
+
+			const editors = vscode.window.visibleTextEditors.filter(e => e.document.uri.toString() === document.uri.toString());
+			const tabSize = (editors[0] || vscode.window.activeTextEditor)?.options.tabSize as number ?? 4;
 
 			for (let i=0; i < document.lineCount; ++i) {
 				const line = document.lineAt(i);
 				const text = line.text;
 
-				if (IF_BEGIN_REGEX.test(text)) {
-					regionStack.push(i);
-				} else if (IF_END_REGEX.test(text)) {
-					const start = <number> regionStack.pop();
-					foldingRanges.push(new FoldingRange(start, i-1, FoldingRangeKind.Region));
-					decoratorRanges.push(new Range(start+1, 0, i, 0));
+				const indent = countIndent(text, tabSize);
+				if (indent > lastIndent) {
+					indentStack.push(i-1);
+					lastIndent = indent;
+				} else if (indent < lastIndent && indent !== -1) {
+					const start = indentStack.pop() as number;
+					foldingRanges.push(new vscode.FoldingRange(start, i-1, vscode.FoldingRangeKind.Region));
+					lastIndent = indent;
+				}
+
+				const ifBeginIndex = text.indexOf("--IF_BEGIN");
+				if (ifBeginIndex !== -1) {
+					const isActive = evaluator.eval(text.substring(ifBeginIndex+10));
+					regionStack.push([ i, isActive ]);
+				} else if (text.indexOf("--IF_END") !== -1) {
+					const region = regionStack.pop();
+					if (region) {
+						let [start, isActive] = region;
+						foldingRanges.push(new vscode.FoldingRange(start, i-1, vscode.FoldingRangeKind.Region));
+						if (!isActive) {
+							decoratorRanges.push(new vscode.Range(start+1, 0, i, 0));
+						}
+					} else {
+						//console.log('Stack underflow!');
+					}
 				} else if (regionStack.length === 0) {
-					const ifLineBegin = text.indexOf("--IF_LINE");
-					if (ifLineBegin !== -1) {
-						decoratorRanges.push(new Range(i, 0, i, ifLineBegin));
+					const ifLineIndex = text.indexOf("--IF_LINE");
+					if (ifLineIndex !== -1) {
+						const isActive = evaluator.eval(text.substring(ifLineIndex+9));
+						if (!isActive) {
+							decoratorRanges.push(new vscode.Range(i, 0, i, ifLineIndex));
+						}
 					}
 				}
 			}
 
-			const editors = window.visibleTextEditors.filter(e => e.document.uri.toString() === document.uri.toString());
 			for (const e of editors) {
 				e.setDecorations(preprocessorDimDecoration, decoratorRanges);
 			}
 
 			if (regionStack.length !== 0) {
-				//console.log('Unbalanced preprocessor directives!');
+				//console.log('Unbalanced region stack!');
 			}
 
-			return []; //foldingRanges;// Temporarily disabled because it breaks regular folding.
+			if (indentStack.length !== 0) {
+				//console.log('Unbalanced indent stack!');
+				const lastLine = document.lineCount - 1;
+				while (indentStack.length > 0) {
+					const start = indentStack.pop() as number;
+					foldingRanges.push(new vscode.FoldingRange(start, lastLine, vscode.FoldingRangeKind.Region));
+				}
+			}
+
+			return foldingRanges;
 		}
 	}));
 
@@ -166,24 +229,24 @@ export function activate(context: ExtensionContext) {
 	const ENUM_REGEX = /([\w_]+)\s*=\s*table\.enum\(/;
 	const CONST_REGEX = /^(?:local\s+)?([A-Z_]+)\s*=/;
 	const LOCAL_REGEX = /^local(?:\s+function)?\s+([\w_]+)\b/;
-	context.subscriptions.push(languages.registerDocumentSymbolProvider(LANGUAGE_SELECTOR, {
-		provideDocumentSymbols(document, token) {
+	context.subscriptions.push(vscode.languages.registerDocumentSymbolProvider(LANGUAGE_SELECTOR, {
+		provideDocumentSymbols(document, _token) {
 			const symbols = [];
-			const symbolLookup = new Map<string, DocumentSymbol>();
+			const symbolLookup = new Map<string, vscode.DocumentSymbol>();
 
 			methodList.length = 0; // Clear the array, JavaScript style.
 
 			for (let i=0; i < document.lineCount; ++i) {
 				const line = document.lineAt(i);
 				const text = line.text;
-				const range = new Range(i, 0, i, 0);
-				const selectionRange = new Range(i, 0, i, 0);
+				const range = new vscode.Range(i, 0, i, 0);
+				const selectionRange = new vscode.Range(i, 0, i, 0);
 
 				const methodMatches = METHOD_REGEX.exec(text);
 				if (methodMatches) {
 					const [_, mClass, mMethod, mArgs] = methodMatches;
-					const kind = (mMethod === "init") ? SymbolKind.Constructor : SymbolKind.Method;
-					const symbol = new DocumentSymbol(mMethod, mClass, kind, range, selectionRange);
+					const kind = (mMethod === "init") ? vscode.SymbolKind.Constructor : vscode.SymbolKind.Method;
+					const symbol = new vscode.DocumentSymbol(mMethod, mClass, kind, range, selectionRange);
 					const parent = symbolLookup.get(mClass);
 					if (parent) {
 						parent.children.push(symbol);
@@ -200,14 +263,14 @@ export function activate(context: ExtensionContext) {
 				const functionMatches = FUNCTION_REGEX.exec(text);
 				if (functionMatches) {
 					const [_, mFunc] = functionMatches;
-					symbols.push(new DocumentSymbol(mFunc, "", SymbolKind.Function, range, selectionRange));
+					symbols.push(new vscode.DocumentSymbol(mFunc, "", vscode.SymbolKind.Function, range, selectionRange));
 					continue;
 				}
 
 				const classMatches = CLASS_REGEX.exec(text);
 				if (classMatches) {
 					const [_, mClass] = classMatches;
-					const symbol = new DocumentSymbol(mClass, "", SymbolKind.Class, range, selectionRange);
+					const symbol = new vscode.DocumentSymbol(mClass, "", vscode.SymbolKind.Class, range, selectionRange);
 					symbols.push(symbol);
 					symbolLookup.set(mClass, symbol);
 					continue;
@@ -216,7 +279,7 @@ export function activate(context: ExtensionContext) {
 				const objectMatches = OBJECT_REGEX.exec(text);
 				if (objectMatches) {
 					const [_, mObj] = objectMatches;
-					const symbol = new DocumentSymbol(mObj, "", SymbolKind.Object, range, selectionRange);
+					const symbol = new vscode.DocumentSymbol(mObj, "", vscode.SymbolKind.Object, range, selectionRange);
 					symbols.push(symbol);
 					symbolLookup.set(mObj, symbol);
 					continue;
@@ -225,21 +288,21 @@ export function activate(context: ExtensionContext) {
 				const enumMatches = ENUM_REGEX.exec(text);
 				if (enumMatches) {
 					const [_, mEnum] = enumMatches;
-					symbols.push(new DocumentSymbol(mEnum, "", SymbolKind.Enum, range, selectionRange));
+					symbols.push(new vscode.DocumentSymbol(mEnum, "", vscode.SymbolKind.Enum, range, selectionRange));
 					continue;
 				}
 
 				const constMatches = CONST_REGEX.exec(text);
 				if (constMatches) {
 					const [_, mConst] = constMatches;
-					symbols.push(new DocumentSymbol(mConst, "", SymbolKind.Constant, range, selectionRange));
+					symbols.push(new vscode.DocumentSymbol(mConst, "", vscode.SymbolKind.Constant, range, selectionRange));
 					continue;
 				}
 
 				const localMatches = LOCAL_REGEX.exec(text);
 				if (localMatches) {
 					const [_, mLocal] = localMatches;
-					symbols.push(new DocumentSymbol(mLocal, "", SymbolKind.Variable, range, selectionRange));
+					symbols.push(new vscode.DocumentSymbol(mLocal, "", vscode.SymbolKind.Variable, range, selectionRange));
 					continue;
 				}
 			}
@@ -248,17 +311,17 @@ export function activate(context: ExtensionContext) {
 	}));
 
 	const COLOR_REGEX = /\{\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\}/d;
-	context.subscriptions.push(languages.registerColorProvider(LANGUAGE_SELECTOR, {
-		provideColorPresentations(color, context, token) {
+	context.subscriptions.push(vscode.languages.registerColorProvider(LANGUAGE_SELECTOR, {
+		provideColorPresentations(color, _context, _token) {
 			const cA = (255*color.alpha).toFixed(0);
 			const cR = (255*color.red).toFixed(0);
 			const cG = (255*color.green).toFixed(0);
 			const cB = (255*color.blue).toFixed(0);
-			const presentation = new ColorPresentation(`{${cA},${cR},${cG},${cB}}`);
+			const presentation = new vscode.ColorPresentation(`{${cA},${cR},${cG},${cB}}`);
 			// presentation.textEdit = new TextEdit()
 			return [ presentation ];
 		},
-		provideDocumentColors(document, token) {
+		provideDocumentColors(document, _token) {
 			const colors = [];
 
 			for (let i=0; i < document.lineCount; ++i) {
@@ -268,10 +331,10 @@ export function activate(context: ExtensionContext) {
 				const colorMatches = COLOR_REGEX.exec(text);
 				if (colorMatches) {
 					const [_, cA, cR, cG, cB] = colorMatches;
-					const color = new Color(parseInt(cR, 10)/255, parseInt(cG, 10)/255, parseInt(cB, 10)/255, parseInt(cA, 10)/255);
+					const color = new vscode.Color(parseInt(cR, 10)/255, parseInt(cG, 10)/255, parseInt(cB, 10)/255, parseInt(cA, 10)/255);
 					const indices = (<any> colorMatches).indices; // Ugly hack to shut up TypeScript.
-					const range = new Range(i, indices[0][0], i, indices[0][1]);
-					colors.push(new ColorInformation(range, color));
+					const range = new vscode.Range(i, indices[0][0], i, indices[0][1]);
+					colors.push(new vscode.ColorInformation(range, color));
 				}
 			}
 
@@ -279,10 +342,10 @@ export function activate(context: ExtensionContext) {
 		}
 	}));
 
-
-	context.subscriptions.push(languages.registerHoverProvider(LANGUAGE_SELECTOR, {
-		async provideHover(document: TextDocument, position: Position, token: CancellationToken): Promise<Hover | undefined> {
-			const workspaceFolders = workspace.workspaceFolders;
+	// Texture preview.
+	context.subscriptions.push(vscode.languages.registerHoverProvider(LANGUAGE_SELECTOR, {
+		async provideHover(document, position): Promise<vscode.Hover | undefined> {
+			const workspaceFolders = vscode.workspace.workspaceFolders;
 			const folder = workspaceFolders && workspaceFolders[0];
 			if (!folder) {
 				return;
@@ -295,9 +358,9 @@ export function activate(context: ExtensionContext) {
 			if (stringOpen === -1 || stringClose === -1) {
 				return;
 			}
-			const hoverRange = new Range(
-				new Position(position.line, stringOpen),
-				new Position(position.line, 1+stringClose)
+			const hoverRange = new vscode.Range(
+				new vscode.Position(position.line, stringOpen),
+				new vscode.Position(position.line, 1+stringClose)
 			);
 			const path = text.substring(1+stringOpen, stringClose);
 			const textures = await server.textures();
@@ -305,22 +368,22 @@ export function activate(context: ExtensionContext) {
 			if (!uri) {
 				return;
 			}
-			const mdString = new MarkdownString();
+			const mdString = new vscode.MarkdownString();
 			mdString.supportHtml = true;
 			mdString.appendMarkdown(`<img src='${uri.toString()}'>`);
-			return new Hover(mdString, hoverRange);
+			return new vscode.Hover(mdString, hoverRange);
 		}
 	}));
 
-	context.subscriptions.push(languages.registerCompletionItemProvider(LANGUAGE_SELECTOR, {
-		provideCompletionItems(document, position, token, context) {
-			const range = new Range(position.line, position.character-5, position.line, position.character-1);
+	context.subscriptions.push(vscode.languages.registerCompletionItemProvider(LANGUAGE_SELECTOR, {
+		provideCompletionItems(document, position, _token, _context) {
+			const range = new vscode.Range(position.line, position.character-5, position.line, position.character-1);
 			const word = document.getText(range);
 			if (word !== "self") {
 				return null;
 			}
 			return methodList.map((method) => {
-				const item = new CompletionItem(method.name, CompletionItemKind.Function);
+				const item = new vscode.CompletionItem(method.name, vscode.CompletionItemKind.Function);
 				item.detail = "(method)";
 				item.documentation = "Tell me if you can see this.";
 				return item;
@@ -347,16 +410,16 @@ export function activate(context: ExtensionContext) {
 	*/
 
 	const LINK_REGEX = /@?([\w_/]+\.lua)(?::(\d+))?/d;
-	context.subscriptions.push(languages.registerDocumentLinkProvider("stingray-output", {
-		provideDocumentLinks(document, token) {
-			const links: DocumentLink[] = [];
+	context.subscriptions.push(vscode.languages.registerDocumentLinkProvider("stingray-output", {
+		provideDocumentLinks(document, _token) {
+			const links: vscode.DocumentLink[] = [];
 
-			const workspaceFolders = workspace.workspaceFolders;
+			const workspaceFolders = vscode.workspace.workspaceFolders;
 			const folder = workspaceFolders && workspaceFolders[0];
-
 			if (!folder) {
 				return links;
 			}
+			const rootUri = folder.uri.fsPath;
 
 			for (let i=0; i < document.lineCount; ++i) {
 				const line = document.lineAt(i);
@@ -365,10 +428,17 @@ export function activate(context: ExtensionContext) {
 				const linkMatches = LINK_REGEX.exec(text);
 				if (linkMatches) {
 					const indices = (<any> linkMatches).indices;
-					const range = new Range(i, indices[0][0], i, indices[0][1]);
-					const line = linkMatches[2] ? parseInt(linkMatches[2], 10) : 1;
-					const uri = Uri.parse(`vscode://file/${folder.uri.fsPath}/${linkMatches[1]}:${line}`);
-					links.push(new DocumentLink(range, uri));
+					const range = new vscode.Range(i, indices[0][0], i, indices[0][1]);
+					const arg = {
+						file: `${rootUri}/${linkMatches[1]}`,
+						line: linkMatches[2] ? parseInt(linkMatches[2], 10) : 1,
+					};
+					const uri = vscode.Uri.parse(
+						`command:fatshark-code-assist._goToErrorLocation?${encodeURIComponent(JSON.stringify(arg))}`
+					);
+					const link = new vscode.DocumentLink(range, uri);
+					link.tooltip = 'Go to File';
+					links.push(link);
 				}
 			}
 

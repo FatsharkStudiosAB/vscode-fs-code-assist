@@ -283,6 +283,23 @@ export function activate(context: vscode.ExtensionContext) {
 			clientItem.focusOutput();
 		});
 	});
+
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist._goToErrorLocation', async (loc) => {
+		if (!vscode.window.activeTextEditor) {
+			return;
+		}
+		const toolchain = getActiveToolchain();
+		if (!toolchain) {
+			return;
+		}
+		const { file, line } = loc;
+		const document = await vscode.workspace.openTextDocument(file);
+		await vscode.window.showTextDocument(document);
+		//vscode.commands.executeCommand('revealLine', { lineNumber: line, at: 'center' });
+		const selection = new vscode.Selection(line, 0, line, 0);
+		vscode.window.activeTextEditor.revealRange(selection, vscode.TextEditorRevealType.InCenter);
+		vscode.window.activeTextEditor.selection = selection;
+	}));
 }
 
 export function deactivate() {
