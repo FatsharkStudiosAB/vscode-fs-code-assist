@@ -1,10 +1,12 @@
 import { basename } from "path";
+import path = require("path");
 import * as SJSON from 'simplified-json';
 import { TextDecoder } from "util";
 import * as vscode from "vscode";
 import { activate as activateAdocAutocomplete } from './adoc-autocomplete';
 import { RawSymbolInformation, TaskRunner } from "./project-symbol-indexer";
 import { BooleanEvaluator } from "./utils/boolean-evaluator";
+import { formatCommand } from "./utils/vscode";
 
 const LANGUAGE_SELECTOR = "lua";
 
@@ -78,8 +80,6 @@ class StingrayLuaLanguageServer {
 export function activate(context: vscode.ExtensionContext) {
 	const server = new StingrayLuaLanguageServer();
 
-	activateAdocAutocomplete(context);
-
 	context.subscriptions.push(vscode.languages.registerDefinitionProvider(LANGUAGE_SELECTOR, {
 		async provideDefinition(document, position) {
 			const wordRange = document.getWordRangeAtPosition(position, /[\w_]+/);
@@ -128,8 +128,7 @@ export function activate(context: vscode.ExtensionContext) {
 	};
 
 	const getFeatureTags = async () => {
-		const workspaceFolders = vscode.workspace.workspaceFolders;
-		const folder = workspaceFolders && workspaceFolders[0];
+		const folder = vscode.workspace.workspaceFolders?.[0];
 		if (!folder) {
 			return;
 		}
@@ -344,25 +343,36 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Texture preview.
 	context.subscriptions.push(vscode.languages.registerHoverProvider(LANGUAGE_SELECTOR, {
-		async provideHover(document, position): Promise<vscode.Hover | undefined> {
-			const workspaceFolders = vscode.workspace.workspaceFolders;
-			const folder = workspaceFolders && workspaceFolders[0];
-			if (!folder) {
-				return;
+		async provideHover(document, position) {
+			const { text } = document.lineAt(position);
+			let startPos = -1;
+			for (let i = position.character-1; i > -1; --i) {
+				const char = text[i];
+				if (char === '"') {
+					startPos = i + 1;
+					break;
+				} else if (!/\w/.test(char)) {
+					return;
+				}
 			}
-
-			const line = document.lineAt(position.line);
-			const text = line.text;
-			const stringOpen = text.lastIndexOf('"', position.character);
-			const stringClose = text.indexOf('"', position.character);
-			if (stringOpen === -1 || stringClose === -1) {
+			let endPos = -1;
+			for (let j = position.character; j < text.length; ++j) {
+				const char = text[j];
+				if (char === '"') {
+					endPos = j;
+					break;
+				} else if (!/\w/.test(char)) {
+					return;
+				}
+			}
+			if (startPos === -1 || endPos === -1) {
 				return;
 			}
 			const hoverRange = new vscode.Range(
-				new vscode.Position(position.line, stringOpen),
-				new vscode.Position(position.line, 1+stringClose)
+				new vscode.Position(position.line, startPos),
+				new vscode.Position(position.line, endPos)
 			);
-			const path = text.substring(1+stringOpen, stringClose);
+			const path = text.substring(startPos, endPos);
 			const textures = await server.textures();
 			const uri = textures.get(path);
 			if (!uri) {
@@ -370,10 +380,74 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 			const mdString = new vscode.MarkdownString();
 			mdString.supportHtml = true;
-			mdString.appendMarkdown(`<img src='${uri.toString()}'>`);
+			mdString.isTrusted = true;
+			const openExternalUri = formatCommand('fatshark-code-assist._goToResource', {
+				external: true,
+				file: uri.fsPath,
+			});
+			const openVSCodeUri = formatCommand('fatshark-code-assist._goToResource', {
+				external: false,
+				file: uri.fsPath,
+			});
+			mdString.appendCodeblock(path, 'plaintext');
+			mdString.appendMarkdown([
+				`---`,
+				`\n<img src='${uri.toString()}'>\n`,
+				`---`,
+				`[Open externally](${openExternalUri}) | [Open in VSCode](${openVSCodeUri})`,
+			].join('\n'));
 			return new vscode.Hover(mdString, hoverRange);
 		}
 	}));
+
+	activateAdocAutocomplete(context);
+
+	context.subscriptions.push(vscode.languages.registerCompletionItemProvider(LANGUAGE_SELECTOR, {
+		async provideCompletionItems(document, position, _token, _context) {
+			const folder = vscode.workspace.workspaceFolders?.[0];
+			if (!folder) {
+				return;
+			}
+			const { text } = document.lineAt(position);
+			let endPos;
+			for (endPos = position.character-1; endPos > -1; --endPos) {
+				const char = text[endPos];
+				if (char === '"') {
+					return;
+				} else if (char === '/') {
+					break;
+				}
+			}
+			let startPos = -1;
+			for (startPos = endPos-1; startPos > -1; --startPos) {
+				const char = text[startPos];
+				if (char === '"') {
+					++startPos;
+					break;
+				} else if (!/[\w/]/.test(char)) {
+					return;
+				}
+			}
+			if (startPos < 0) {
+				return;
+			}
+			const base = text.slice(startPos, endPos);
+			const uri = vscode.Uri.joinPath(folder.uri, base);
+			const fileTuples = await vscode.workspace.fs.readDirectory(uri);
+			const completions: vscode.CompletionItem[] = [];
+			fileTuples.forEach(([fileName, fileType]) => {
+				if (fileName.endsWith('.processed')) {
+					return;
+				}
+				const kind = fileType === vscode.FileType.Directory ? vscode.CompletionItemKind.Folder : vscode.CompletionItemKind.File;
+				const label = fileName.split('.')[0];
+				const item = new vscode.CompletionItem(label, kind);
+				item.detail = fileName;
+				completions.push(item);
+			});
+			return completions;
+		}
+	}, '/'));
 
 	context.subscriptions.push(vscode.languages.registerCompletionItemProvider(LANGUAGE_SELECTOR, {
 		provideCompletionItems(document, position, _token, _context) {
@@ -385,7 +459,7 @@ export function activate(context: vscode.ExtensionContext) {
 			return methodList.map((method) => {
 				const item = new vscode.CompletionItem(method.name, vscode.CompletionItemKind.Function);
 				item.detail = "(method)";
-				item.documentation = "Tell me if you can see this.";
+				//item.documentation = "Tell me if you can see this.";
 				return item;
 			});
 		}
@@ -408,14 +482,13 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}, "(,");
 	*/
-
-	const LINK_REGEX = /@?([\w_/]+\.lua)(?::(\d+))?/d;
+	const LUA_LINK_REGEX = /@?([\w/]+\.lua)(?::(\d+))?\b/d;
+	const RESOURCE_LINK_REGEX = /\[(\w+) '([\w/]+)'\]/d;
 	context.subscriptions.push(vscode.languages.registerDocumentLinkProvider("stingray-output", {
 		provideDocumentLinks(document, _token) {
 			const links: vscode.DocumentLink[] = [];
 
-			const workspaceFolders = vscode.workspace.workspaceFolders;
-			const folder = workspaceFolders && workspaceFolders[0];
+			const folder = vscode.workspace.workspaceFolders?.[0];
 			if (!folder) {
 				return links;
 			}
@@ -425,20 +498,33 @@ export function activate(context: vscode.ExtensionContext) {
 				const line = document.lineAt(i);
 				const text = line.text;
 
-				const linkMatches = LINK_REGEX.exec(text);
-				if (linkMatches) {
-					const indices = (<any> linkMatches).indices;
+				const luaMatches = LUA_LINK_REGEX.exec(text);
+				if (luaMatches) {
+					const indices = (<any> luaMatches).indices;
 					const range = new vscode.Range(i, indices[0][0], i, indices[0][1]);
-					const arg = {
-						file: `${rootUri}/${linkMatches[1]}`,
-						line: linkMatches[2] ? parseInt(linkMatches[2], 10) : 1,
-					};
-					const uri = vscode.Uri.parse(
-						`command:fatshark-code-assist._goToErrorLocation?${encodeURIComponent(JSON.stringify(arg))}`
-					);
-					const link = new vscode.DocumentLink(range, uri);
-					link.tooltip = 'Go to File';
+					const commandUri = formatCommand('fatshark-code-assist._goToResource', {
+						external: false,
+						file: `${rootUri}/${luaMatches[1]}`,
+						line: luaMatches[2] ? parseInt(luaMatches[2], 10) : 1,
+					});
+					const link = new vscode.DocumentLink(range, commandUri);
+					link.tooltip = 'Open in VSCode';
 					links.push(link);
+					continue;
+				}
+
+				const resMatches = RESOURCE_LINK_REGEX.exec(text);
+				if (resMatches) {
+					const indices = (<any> resMatches).indices;
+					const range = new vscode.Range(i, indices[0][0], i, indices[0][1]);
+					const commandUri = formatCommand('fatshark-code-assist._goToResource', {
+						external: true,
+						file: `${rootUri}/${resMatches[2]}.${resMatches[1].toLowerCase()}`,
+					});
+					const link = new vscode.DocumentLink(range, commandUri);
+					link.tooltip = 'Open externally';
+					links.push(link);
+					continue;
 				}
 			}
 

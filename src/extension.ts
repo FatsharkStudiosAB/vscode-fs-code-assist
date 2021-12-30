@@ -279,7 +279,7 @@ export function activate(context: vscode.ExtensionContext) {
 		});
 	});
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist._goToErrorLocation', async (loc) => {
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist._goToResource', async (loc) => {
 		if (!vscode.window.activeTextEditor) {
 			return;
 		}
@@ -287,12 +287,21 @@ export function activate(context: vscode.ExtensionContext) {
 		if (!toolchain) {
 			return;
 		}
-		const { file, line } = loc;
-		const document = await vscode.workspace.openTextDocument(file);
-		await vscode.window.showTextDocument(document);
-		const selection = new vscode.Selection(line-1, 0, line-1, 0);
-		vscode.window.activeTextEditor.revealRange(selection, vscode.TextEditorRevealType.InCenter);
-		vscode.window.activeTextEditor.selection = selection;
+		const { file, line, external } = loc;
+		const uri = vscode.Uri.file(file);
+		if (external) {
+			vscode.env.openExternal(uri);
+		} else {
+			if (line) {
+				const document = await vscode.workspace.openTextDocument(uri);
+				await vscode.window.showTextDocument(document);
+				const selection = new vscode.Selection(line-1, 0, line-1, 0);
+				vscode.window.activeTextEditor.revealRange(selection, vscode.TextEditorRevealType.InCenter);
+				vscode.window.activeTextEditor.selection = selection;
+			} else {
+				vscode.commands.executeCommand('vscode.open', uri);
+			}
+		}
 	}));
 }
 

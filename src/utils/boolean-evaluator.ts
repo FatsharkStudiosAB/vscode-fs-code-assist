@@ -35,7 +35,7 @@ export class BooleanEvaluator {
 			return val;
 		} else if (!tok || BooleanEvaluator.binaryOperators[tok]) {
 			throw new Error(`unexpected symbol near '${tok || '<eol>'}'`);
-		} else if (tok) {
+		} else if (BooleanEvaluator.unaryOperators[tok]) {
 			const op = BooleanEvaluator.unaryOperators[tok];
 			return op.func(this._expr(op.prec));
 		} else {

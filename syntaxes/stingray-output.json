@@ -26,6 +26,14 @@
 		"lua-values": {
 			"patterns": [
 				{
+					"match": "@?[\\w/]+\\.lua(?::\\d+)?\\b",
+					"name": "support.function.filename.stingray-output"
+				},
+				{
+					"match": "\\[(\\w+) '([\\w/]+)'\\]",
+					"name": "support.function.filename.stingray-output"
+				},
+				{
 					"match": "\\b(?:false|nil|true)\\b",
 					"name": "constant.language.stingray-output"
 				},
@@ -55,10 +63,6 @@
 							"name": "constant.character.escape.stingray-output"
 						}
 					]
-				},
-				{
-					"match": "@?[\\w/]+\\.lua(?::\\d+)?\\b",
-					"name": "support.function.filename.stingray-output"
 				},
 				{
 					"match": "\\b\\w+/[\\w/]+\\b",

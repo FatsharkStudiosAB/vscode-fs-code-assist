@@ -134,30 +134,32 @@ class AdocCompletionFeatures implements
 		return this.getExpression(lineText, startPos, fixedPosition);
 	}
 
-	private getFunctionExpression(document: vscode.TextDocument, position: vscode.Position): string {
-		const line = document.lineAt(position.line);
-		const lineText = line.text;
-		let startPos = position.character;
+	private getFunctionExpression(document: vscode.TextDocument, position: vscode.Position): [string,number] {
+		const { text } = document.lineAt(position.line);
+		let startPos = position.character - 1;
 		let nbClosingParens = 0;
+		let commaCount = 0;
 
 		while (startPos >= 0) {
-			if (lineText.charAt(startPos) === ')') {
+			const char = text[startPos];
+			if (char === ')' || char === '}') {
 				nbClosingParens++;
-			} else if (lineText.charAt(startPos) === '(') {
+			} else if (char === '(' || char === '{') {
 				nbClosingParens--;
-				if (nbClosingParens === 0) {
+				if (nbClosingParens < 0) {
 					// Position ourselves on the previous non ( character
 					--startPos;
 					break;
 				}
+			} else if (char === ',' && nbClosingParens === 0) {
+				++commaCount;
 			}
 			--startPos;
 		}
 
-
 		let endPos = startPos;
 		while (startPos >= 0) {
-			if (!lineText.charAt(startPos).match(identifierLegalCharacters)) {
+			if (!text[startPos].match(identifierLegalCharacters)) {
 				startPos++;
 				break;
 			}
@@ -165,10 +167,10 @@ class AdocCompletionFeatures implements
 		}
 
 		if (endPos === startPos || startPos >= endPos || startPos < 0) {
-			return '';
+			return [ '', -1 ];
 		}
 
-		return lineText.substring(startPos, 1+endPos);
+		return [ text.substring(startPos, 1+endPos), commaCount ];
 	}
 
 	private functionToString(name: string, signature: AdocSignature) {
@@ -230,7 +232,7 @@ class AdocCompletionFeatures implements
 	}
 
 	provideSignatureHelp(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): vscode.ProviderResult<vscode.SignatureHelp> {
-		const expression = this.getFunctionExpression(document, position);
+		const [ expression, commaCount ] = this.getFunctionExpression(document, position);
 		const tokens = expression.split('.');
 		const info = this.getExactMatch(tokens);
 		if (info?.type !== 'function') {
@@ -246,9 +248,7 @@ class AdocCompletionFeatures implements
 			});
 			return sig;
 		});
-
-		const text = document.lineAt(position.line).text;
-		help.activeParameter = text. slice(text.lastIndexOf('(', position.character), position.character).split(',').length-1;
+		help.activeParameter = commaCount;
 
 		return help;
 	}

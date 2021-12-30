@@ -1,6 +1,7 @@
 // implements tree view UI for connected clients
 import * as vscode from 'vscode';
 import { getActiveToolchain } from './extension';
+import { formatCommand } from './utils/vscode';
 
 export class ConnectionTargetsNodeProvider implements vscode.TreeDataProvider<ConnectionTargetTreeItem> {
 	private _onDidChangeTreeData: vscode.EventEmitter<ConnectionTargetTreeItem | undefined | void> = new vscode.EventEmitter<ConnectionTargetTreeItem | undefined | void>();
@@ -40,9 +41,7 @@ export class ConnectionTargetTreeItem extends vscode.TreeItem {
 		}, vscode.TreeItemCollapsibleState.None);
 		this.tooltip = new vscode.MarkdownString();
 		this.tooltip.appendCodeblock(name);
-		const recompileUri = vscode.Uri.parse(
-			`command:fatshark-code-assist.stingrayRecompile?${encodeURIComponent(JSON.stringify(platform))}`
-		);
+		const recompileUri = formatCommand('fatshark-code-assist.stingrayRecompile', platform);
 		this.tooltip.appendMarkdown([
 			`---`,
 			`**Address**: \`${ip}:${port}\`  `,

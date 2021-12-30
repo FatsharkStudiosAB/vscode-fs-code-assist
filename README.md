@@ -24,11 +24,5 @@ Alternatively, if you're developing it you can also clone the repo into `%UserPr
   + View console output (both compiler/games) within VSCode.
   + Clickable error links in the console output.
 
-### Wishlist
-+ Break on Uncaught Exceptions.
-+ Fix folding for `IF_BEGIN` regions.
-+ Task provider to compile/launch as a task.
-+ Better code completion.
-
 ## License
 See the [LICENSE](./LICENSE.txt) file.

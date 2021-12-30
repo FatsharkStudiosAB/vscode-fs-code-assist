@@ -1,6 +1,6 @@
 import { Socket } from 'net';
 import * as utils from './utils/functions';
-import * as Multicast from "./utils/multicast";
+import * as Multicast from './utils/multicast';
 
 enum MessageType { // Must be the same as in engine.
 	Json = 0,
@@ -8,17 +8,11 @@ enum MessageType { // Must be the same as in engine.
 }
 
 export class StingrayConnection {
-	// Internal state.
-	private _socket : Socket;
-	private _ready : boolean = false;
-	private _closed : boolean = false;
-	private _error : boolean = false;
-
-	// Public properties & read-only accessors.
+	private socket : Socket;
+	public isReady : boolean = false;
+	public isClosed : boolean = false;
+	public hadError : boolean = false;
 	readonly name : string;
-	get isReady() { return this._ready; }
-	get isClosed() { return this._closed; }
-	get hadError() { return this._error; }
 	readonly onDidConnect = new Multicast.Multicast();
 	readonly onDidDisconnect = new Multicast.Multicast();
 	readonly onDidReceiveData = new Multicast.Multicast();
@@ -27,25 +21,25 @@ export class StingrayConnection {
 		this.port = port;
 		this.name = `Stingray (${this.ip}:${port})`;
 
-		this._socket = new Socket();
-		this._socket.on("close", this._onClose.bind(this));
-		this._socket.on("ready", this._onConnect.bind(this));
-		this._socket.connect(this.port, this.ip);
-		this._socket.pause(); // Pull mode.
-		this._pumpMessages().finally(() => {
-			this._socket.destroy();
+		this.socket = new Socket();
+		this.socket.on('close', this._onClose.bind(this));
+		this.socket.on('ready', this._onConnect.bind(this));
+		this.socket.connect(this.port, this.ip);
+		this.socket.pause(); // Pull mode.
+		this._startMessagePump().finally(() => {
+			this.socket.destroy();
 		});
 	}
 
 	close() {
-		this._socket.destroy();
+		this.socket.destroy();
 	}
 
 	sendCommand(command: string, ...args: any) {
 		let guid = utils.uuid4();
 		this._send({
 			id : guid,
-			type : "command",
+			type : 'command',
 			command : command,
 			arg : [...args]
 		});
@@ -54,7 +48,7 @@ export class StingrayConnection {
 
 	sendDebuggerCommand(command: string, data?: any) {
 		this._send(Object.assign({
-			type: "lua_debugger",
+			type: 'lua_debugger',
 			command: command
 		}, data));
 	}
@@ -65,7 +59,7 @@ export class StingrayConnection {
 
 	sendLua(text: string) {
 		this._send({
-			type : "script",
+			type : 'script',
 			script: text
 		});
 	}
@@ -74,44 +68,51 @@ export class StingrayConnection {
 		// 2021-12-21: TCP fragmentation crashes the engine so we try to
 		// prevent it by sending a datagram in a single .write() call.
 		const payload = JSON.stringify(data);
-		const length = Buffer.byteLength(payload, "utf8");
+		const length = Buffer.byteLength(payload, 'utf8');
 		const buffer = Buffer.alloc(length + 8);
 		buffer.writeInt32BE(MessageType.Json, 0);
 		buffer.writeInt32BE(length, 4);
 		buffer.subarray(8).write(payload, 'utf8');
-		this._socket.write(buffer);
+		this.socket.write(buffer);
 	}
 
 	_onConnect() {
-		this._ready = true;
+		this.isReady = true;
 		this.onDidConnect.fire();
 	}
 
 	_onClose(hadError: boolean) {
-		this._ready = false;
-		this._closed = true;
-		this._error = hadError;
+		this.isReady = false;
+		this.isClosed = true;
+		this.hadError = hadError;
 		this.onDidDisconnect.fire(hadError);
 	}
 
-	async _readBytes(n: number) : Promise<Buffer> {
-		return new Promise((resolve, reject) => {
-			const socket = this._socket;
-			if (!socket.readable) {
-				return reject();
-			}
-			socket.once("end", () => reject());
+	private sink?: {
+		bytes: number,
+		resolve: (data: Buffer) => void,
+		reject: () => void,
+	} | null;
 
-			socket.on("readable", function onReadable() {
-				if (socket.readableLength >= n) {
-					resolve(socket.read(n));
-					socket.off("readable", onReadable);
-				}
-			});
+	async _readBytes(bytes: number) : Promise<Buffer> {
+		return new Promise((resolve, reject) => {
+			this.sink = { resolve, reject, bytes };
+			this._pump();
 		});
 	}
 
-	async _pumpMessages() {
+	_pump() {
+		const { sink, socket } = this;
+		if (sink && socket.readable && socket.readableLength >= sink.bytes) {
+			sink.resolve(socket.read(sink.bytes));
+			this.sink = null;
+		}
+	}
+
+	async _startMessagePump() {
+		this.socket.on('readable', () => this._pump());
+		this.socket.on('end', () => this.sink?.reject());
+
 		while (true) {
 			// Read and process the header.
 			const header = await this._readBytes(8);
@@ -129,12 +130,12 @@ export class StingrayConnection {
 				jsonLength = binaryOffset - 4;
 				binaryLength = messageLength - binaryOffset;
 			} else {
-				throw new Error(`Unknown messageType ${messageType} at socket ${this._socket.remoteAddress}`);
+				throw new Error(`Unknown messageType ${messageType} at socket ${this.socket.remoteAddress}`);
 			}
 
 			// Read the JSON.
 			const jsonBuffer = await this._readBytes(jsonLength);
-			const json = JSON.parse(jsonBuffer.toString("utf8").replace(/\0+$/g, ""));
+			const json = JSON.parse(jsonBuffer.toString('utf8').replace(/\0+$/g, ''));
 			// For some reason, messages can include trailing garbage. We clean it up.
 
 			// Read the binary.
