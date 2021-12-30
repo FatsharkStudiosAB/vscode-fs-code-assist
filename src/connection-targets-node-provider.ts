@@ -50,10 +50,11 @@ export class ConnectionTargetTreeItem extends vscode.TreeItem {
 		].join('\n'));
 		this.tooltip.isTrusted = true;
 		this.tooltip.supportThemeIcons = true;
-	}
-
-	connectToAll() {
-		vscode.commands.executeCommand('fatshark-code-assist.stingrayConnect', this);
+		this.command = {
+			title: 'Connect to All',
+			command: 'fatshark-code-assist.stingrayConnect',
+			arguments: [ this ],
+		};
 	}
 
 	contextValue = 'connection-target';

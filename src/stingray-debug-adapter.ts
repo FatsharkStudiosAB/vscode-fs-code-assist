@@ -4,7 +4,8 @@ import * as path from 'path';
 import * as DebugAdapter from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { StingrayConnection } from './stingray-connection';
-import { StingrayToolchain, uuid4 } from './utils';
+import { uuid4 } from './utils/functions';
+import { StingrayToolchain } from "./utils/stingray-toolchain";
 
 /** Map of file paths to line numbers with breakpoints. */
 type StingrayBreakpoints = {

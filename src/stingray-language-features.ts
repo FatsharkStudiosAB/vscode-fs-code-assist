@@ -4,7 +4,7 @@ import { TextDecoder } from "util";
 import * as vscode from "vscode";
 import { activate as activateAdocAutocomplete } from './adoc-autocomplete';
 import { RawSymbolInformation, TaskRunner } from "./project-symbol-indexer";
-import { BooleanEvaluator } from "./utils";
+import { BooleanEvaluator } from "./utils/boolean-evaluator";
 
 const LANGUAGE_SELECTOR = "lua";
 

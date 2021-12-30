@@ -6,7 +6,8 @@ import { ConnectedClientsNodeProvider, ConnectedClientTreeItem } from './connect
 import { connectionHandler, MAX_CONNECTIONS } from './connection-handler';
 import { ConnectionTargetsNodeProvider, ConnectionTargetTreeItem } from './connection-targets-node-provider';
 import * as languageFeatures from './stingray-language-features';
-import { StingrayToolchain, uuid4 } from './utils';
+import { uuid4 } from './utils/functions';
+import { StingrayToolchain } from "./utils/stingray-toolchain";
 
 let _activeToolchain: StingrayToolchain;
 export const getActiveToolchain = () => {
@@ -259,12 +260,6 @@ export function activate(context: vscode.ExtensionContext) {
 		connectTargetsNodeProvider.refresh();
 	}));
 
-	connectTargetTreeView.onDidChangeSelection((e) => {
-		e.selection.forEach(clientItem => {
-			clientItem.connectToAll();
-		});
-	});
-
 	// Connected clients panel
 	let connectedClientsNodeProvider = new ConnectedClientsNodeProvider();
 	let connectedClientsTreeView = vscode.window.createTreeView("fs-code-assist-clients", {
@@ -295,8 +290,7 @@ export function activate(context: vscode.ExtensionContext) {
 		const { file, line } = loc;
 		const document = await vscode.workspace.openTextDocument(file);
 		await vscode.window.showTextDocument(document);
-		//vscode.commands.executeCommand('revealLine', { lineNumber: line, at: 'center' });
-		const selection = new vscode.Selection(line, 0, line, 0);
+		const selection = new vscode.Selection(line-1, 0, line-1, 0);
 		vscode.window.activeTextEditor.revealRange(selection, vscode.TextEditorRevealType.InCenter);
 		vscode.window.activeTextEditor.selection = selection;
 	}));

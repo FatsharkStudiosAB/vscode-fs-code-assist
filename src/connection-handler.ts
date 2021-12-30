@@ -4,7 +4,7 @@
 
 import * as vscode from 'vscode';
 import { StingrayConnection } from "./stingray-connection";
-import { getTimestamp } from './utils';
+import { getTimestamp } from './utils/functions';
 
 export const MAX_CONNECTIONS = 4;
 
