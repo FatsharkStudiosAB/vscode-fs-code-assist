@@ -1,0 +1,34 @@
+diff --git a/src/stingray-debug-adapter.ts b/src/stingray-debug-adapter.ts
+index c001f85..b53912e 100644
+--- a/src/stingray-debug-adapter.ts
++++ b/src/stingray-debug-adapter.ts
+@@ -126,18 +126,17 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
+ 
+ 	private handleLegacyMessage(data: any) {
+ 		if (data.message === 'halted') {
+-			let haltReason = 'pause';
+ 			const resourcePath = this.toResourcePath(data.source);
+ 			if (this.breakpoints.has(resourcePath)) {
+ 				const line = data.line;
+ 				const bp = this.breakpoints.get(resourcePath)?.find((bp) => (bp.line === line));
+ 				if (bp) {
+ 					bp.verified = true;
+-					haltReason = 'breakpoint';
+ 					this.sendEvent(new DebugAdapter.BreakpointEvent('update', bp));
+ 				}
+ 			}
+-			this.sendEvent(new DebugAdapter.StoppedEvent(haltReason, THREAD_ID));
++			const reason = data.reason ?? 'bishop';
++			this.sendEvent(new DebugAdapter.StoppedEvent(reason, THREAD_ID, data.error));
+ 		} else if (data.message === 'callstack') {
+ 			this.callstack = data.stack;
+ 			this.variables.clear();
+@@ -357,6 +356,8 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
+ 	}
+ 
+ 	protected setExceptionBreakPointsRequest(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments): void {
++		const status = args.filters.includes('error');
++		this.connection!.sendDebuggerCommand('set_break_on_error', { status });
+ 		this.sendResponse(response);
+ 	}
+ 
