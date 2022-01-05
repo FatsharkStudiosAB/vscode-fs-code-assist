@@ -66,7 +66,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}, (progress, token) => new Promise<void>(async (resolve, reject) => {
 			const toolchain = getActiveToolchain();
 			if (!toolchain) {
-				reject();
+				resolve();
 				return;
 			}
 
@@ -83,7 +83,8 @@ export function activate(context: vscode.ExtensionContext) {
 						compiler.onDidReceiveData.remove(onData);
 						resolve();
 					} else {
-						reject();
+						compiler.onDidReceiveData.remove(onData);
+						resolve();
 					}
 				} else if (data.type === "compile_progress") {
 					const newStatus = Math.ceil(data.i/data.count * 100);
@@ -91,6 +92,8 @@ export function activate(context: vscode.ExtensionContext) {
 					const message = data.file || "Reticulating splines...";
 					progress.report({ increment: increment, message: "Stingray Compile: " + message });
 					status = newStatus;
+				} else if (data.type === "message" && data.system === "Compiler" && data.level === "error") {
+					vscode.window.showErrorMessage(`Compile error: ${data.message} compile id: ${id}`);
 				}
 			};
 
@@ -102,7 +105,7 @@ export function activate(context: vscode.ExtensionContext) {
 					"id": id,
 					"type" : "cancel",
 				});
-				reject();
+				resolve();
 			});
 
 			progress.report({ increment: 0, message: "Stingray Compile: Starting..." });

@@ -7,7 +7,7 @@ export class Multicast {
 	};
 
 	remove(func: Function) {
-		this.listeners = this.listeners.filter((f) => func === f);
+		this.listeners = this.listeners.filter((f) => func !== f);
 	}
 
 	fire(...args: any[]) {
