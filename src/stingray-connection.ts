@@ -24,6 +24,7 @@ export class StingrayConnection {
 		this.socket = new Socket();
 		this.socket.on('close', this._onClose.bind(this));
 		this.socket.on('ready', this._onConnect.bind(this));
+		this.socket.on('error', this._onError.bind(this));
 		this.socket.connect(this.port, this.ip);
 		this.socket.pause(); // Pull mode.
 		this._startMessagePump().finally(() => {
@@ -86,6 +87,10 @@ export class StingrayConnection {
 		this.isClosed = true;
 		this.hadError = hadError;
 		this.onDidDisconnect.fire(hadError);
+	}
+
+	_onError(err: Error) {
+		console.error(err.toString());
 	}
 
 	private sink?: {

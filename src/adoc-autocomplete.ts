@@ -260,6 +260,9 @@ export function activate(context: vscode.ExtensionContext) {
 		return;
 	}
 	const apiDoc = path.join(toolchain.path, 'tools_external', 'lua_api_stingray3d.json');
+	if (!fs.existsSync(apiDoc)) {
+		return;
+	}
 
 	const selector = 'lua';
 	const adocCompletionFeatures = new AdocCompletionFeatures(apiDoc);
