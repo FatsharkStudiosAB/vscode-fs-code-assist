@@ -159,17 +159,16 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		});
 	}));
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayCommandTarget', (element) => {
-		let connectedClientTreeItem = element as ConnectedClientTreeItem;
-		let commandBoxOptions = {prompt:`Command target: ${connectedClientTreeItem.label}`};
-		vscode.window.showInputBox(commandBoxOptions).then( (value: string | undefined) => {
-			let commandArgs = value?.split(" ") || [];
-			if (commandArgs.length > 0) {
-				let commandType = commandArgs[0];
-				commandArgs.splice(0, 1);
-				connectedClientTreeItem.connection?.sendCommand(commandType, ...commandArgs);
-			}
-		});
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayCommandTarget', async (element) => {
+		const connectedClientTreeItem = element as ConnectedClientTreeItem;
+
+		const commandBoxOptions = {prompt: `Command target: ${connectedClientTreeItem.label}`};
+		const value = await vscode.window.showInputBox(commandBoxOptions) ?? "";
+		const command = value.split(" ");
+		const commandType = command.shift();
+		if (commandType) {
+			connectedClientTreeItem.connection.sendCommand(commandType, ...command);
+		}
 	}));
 
 	let luaBoxOptions = {
@@ -241,6 +240,8 @@ export function activate(context: vscode.ExtensionContext) {
 			"port" : connection.port,
 		};
 
+		const outputChannel = connectionHandler.getOutputForConnection(connection) as vscode.OutputChannel;
+		outputChannel.show();
 		vscode.debug.startDebugging(undefined, attachArgs);
 	}));
 
