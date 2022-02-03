@@ -372,6 +372,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 	}
 
 	protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
+		// We rely on a deprecated API, so we ensure we have the required attributes.
 		const filePath = args.source.path;
 		const clientLines = args.lines;
 		if (!filePath || !clientLines) {
@@ -379,6 +380,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 			return;
 		}
 
+		// Try to translate from the filesystem path to a stingray resource path.
 		let resourcePath = path.relative(this.projectMapFolder, filePath).replace(/\\/g, '/');
 		let validScript = !!resourcePath && !resourcePath.startsWith('..') && !path.isAbsolute(resourcePath);
 		if (!validScript) {
@@ -386,24 +388,27 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 			validScript = !!resourcePath && !resourcePath.startsWith('..') && !path.isAbsolute(resourcePath);
 		}
 
-		// Verify breakpoint locations
-		const vsBreakpoints = clientLines.map(line => {
-			const bp = new DebugAdapter.Breakpoint(validScript, line, 0, new DebugAdapter.Source(resourcePath, filePath));
+		// Reply with information about the breakpoints to the client.
+		const source = new DebugAdapter.Source(resourcePath, filePath);
+		const adapterBreakpoints = clientLines.map(line => {
+			const bp = new DebugAdapter.Breakpoint(validScript, line, 0, source);
 			bp.setId(this.lastBreakpointId++);
 			return bp;
 		});
-		this.breakpoints.set(resourcePath, validScript ? vsBreakpoints : []);
-		response.body = { breakpoints: vsBreakpoints };
+		response.body = { breakpoints: adapterBreakpoints };
 		this.sendResponse(response);
 
-		// Need to send all of them at once since it clears them every time new ones are sent.
-		let stingrayBreakpoints: StingrayBreakpoints = {};
-		this.breakpoints.forEach((breakpoints, resourceName) => {
-			if (vsBreakpoints.length > 0) {
-				stingrayBreakpoints[resourceName] = breakpoints.map(bp => bp.line || 0);
-			}
-		});
-		this.connection?.sendDebuggerCommand('set_breakpoints', { breakpoints: stingrayBreakpoints });
+		// If the path was valid, update the breakpoints.
+		if (validScript) {
+			this.breakpoints.set(resourcePath, adapterBreakpoints);
+
+			// Need to send all of them at once since it clears them every time new ones are sent.
+			const stingrayBreakpoints: StingrayBreakpoints = {};
+			this.breakpoints.forEach((breakpoints, resourceName) => {
+				stingrayBreakpoints[resourceName] = breakpoints.map((bp) => bp.line!);
+			});
+			this.connection?.sendDebuggerCommand('set_breakpoints', { breakpoints: stingrayBreakpoints });
+		}
 	}
 
 	protected configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, _args: DebugProtocol.ConfigurationDoneArguments): void {
