@@ -1,5 +1,5 @@
 
-export class Multicast {
+export default class Multicast {
 	private listeners: Function[] = [];
 
 	add(func: Function) {

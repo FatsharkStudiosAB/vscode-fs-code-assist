@@ -1,6 +1,6 @@
 import { Socket } from 'net';
 import * as utils from './utils/functions';
-import * as Multicast from './utils/multicast';
+import Multicast from './utils/multicast';
 
 enum MessageType { // Must be the same as in engine.
 	Json = 0,
@@ -13,9 +13,9 @@ export class StingrayConnection {
 	public isClosed : boolean = false;
 	public hadError : boolean = false;
 	readonly name : string;
-	readonly onDidConnect = new Multicast.Multicast();
-	readonly onDidDisconnect = new Multicast.Multicast();
-	readonly onDidReceiveData = new Multicast.Multicast();
+	readonly onDidConnect = new Multicast();
+	readonly onDidDisconnect = new Multicast();
+	readonly onDidReceiveData = new Multicast();
 
 	constructor(readonly port: number, readonly ip: string = '127.0.0.1') {
 		this.port = port;
