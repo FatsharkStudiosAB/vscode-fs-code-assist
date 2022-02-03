@@ -297,7 +297,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 			this.breakpoints.clear();
 			this.callbacks.clear();
 			this.sendEvent(new DebugAdapter.OutputEvent(`Disconnected from ${ip}:${port}`));
-			this.sendEvent(new DebugAdapter.TerminatedEvent());
+			this.sendEvent(new DebugAdapter.ExitedEvent(0));
 		});
 	}
 
