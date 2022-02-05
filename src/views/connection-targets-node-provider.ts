@@ -1,7 +1,7 @@
 // implements tree view UI for connected clients
 import * as vscode from 'vscode';
-import { getActiveToolchain } from './extension';
-import { formatCommand } from './utils/vscode';
+import { getActiveToolchain } from '../extension';
+import { formatCommand } from '../utils/vscode';
 
 export class ConnectionTargetsNodeProvider implements vscode.TreeDataProvider<ConnectionTargetTreeItem> {
 	private _onDidChangeTreeData: vscode.EventEmitter<ConnectionTargetTreeItem | undefined | void> = new vscode.EventEmitter<ConnectionTargetTreeItem | undefined | void>();

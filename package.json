@@ -68,7 +68,7 @@
         "icon": "$(repo-sync)"
       },
       {
-        "command": "fatshark-code-assist.stingrayLua",
+        "command": "fatshark-code-assist.executeLua",
         "title": "Execute Lua",
         "category": "Stingray"
       },
@@ -93,11 +93,6 @@
         "category": "Stingray"
       },
       {
-        "command": "fatshark-code-assist.stingrayLuaTarget",
-        "title": "Execute Lua on Target",
-        "category": "Stingray"
-      },
-      {
         "command": "fatshark-code-assist.selectionTarget",
         "title": "Execute Selection on Target",
         "category": "Stingray"
@@ -107,12 +102,6 @@
         "title": "Attach Debugger",
         "category": "Stingray",
         "icon": "$(debug-alt)"
-      },
-      {
-        "command": "fatshark-code-assist.detachDebugger",
-        "title": "Detach Debugger",
-        "category": "Stingray",
-        "icon": "$(debug-disconnect)"
       },
       {
         "command": "fatshark-code-assist.refreshTargets",
@@ -129,10 +118,6 @@
         },
         {
           "command": "fatshark-code-assist.executeSelection",
-          "when": "false"
-        },
-        {
-          "command": "fatshark-code-assist.stingrayLuaTarget",
           "when": "false"
         },
         {
@@ -182,7 +167,7 @@
           "when": "viewItem == connected-client"
         },
         {
-          "command": "fatshark-code-assist.stingrayLuaTarget",
+          "command": "fatshark-code-assist.executeLua",
           "when": "viewItem == connected-client"
         },
         {
