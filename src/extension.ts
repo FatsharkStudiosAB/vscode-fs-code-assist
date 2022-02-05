@@ -119,7 +119,7 @@ export function activate(context: vscode.ExtensionContext) {
 			const config = await toolchain.config();
 			const currentProject = config.Projects[config.ProjectIndex];
 			const sourceDir = currentProject.SourceDirectory;
-			const dataDir = pathJoin(currentProject.DataDirectoryBase, platform);
+			const dataDir = pathJoin(currentProject.DataDirectoryBase, platform!);
 			compiler.sendJSON({ // .replace(/\\/g, '/')
 				"id": id,
 				"type" : "compile",
