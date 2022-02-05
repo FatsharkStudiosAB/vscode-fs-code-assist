@@ -65,7 +65,7 @@ export class StingrayConnection {
 		});
 	}
 
-	_send(data: any) {
+	private _send(data: any) {
 		// 2021-12-21: TCP fragmentation crashes the engine so we try to
 		// prevent it by sending a datagram in a single .write() call.
 		const payload = JSON.stringify(data);
@@ -77,19 +77,19 @@ export class StingrayConnection {
 		this.socket.write(buffer);
 	}
 
-	_onConnect() {
+	private _onConnect() {
 		this.isReady = true;
 		this.onDidConnect.fire();
 	}
 
-	_onClose(hadError: boolean) {
+	private _onClose(hadError: boolean) {
 		this.isReady = false;
 		this.isClosed = true;
 		this.hadError = hadError;
 		this.onDidDisconnect.fire(hadError);
 	}
 
-	_onError(err: Error) {
+	private _onError(err: Error) {
 		console.error(err.toString());
 	}
 
@@ -99,24 +99,43 @@ export class StingrayConnection {
 		reject: () => void,
 	} | null;
 
-	async _readBytes(bytes: number) : Promise<Buffer> {
-		return new Promise((resolve, reject) => {
-			this.sink = { resolve, reject, bytes };
-			this._pump();
-		});
-	}
-
-	_pump() {
-		const { sink, socket } = this;
-		if (sink && socket.readable && socket.readableLength >= sink.bytes) {
-			sink.resolve(socket.read(sink.bytes));
-			this.sink = null;
+	private async _readBytes(bytes: number) : Promise<Buffer> {
+		const maxChunkSize = this.socket.readableHighWaterMark;
+		if (bytes <= maxChunkSize) {
+			return new Promise((resolve, reject) => {
+				this.sink = { resolve, reject, bytes };
+				this._pump();
+			});
+		} else {
+			const buf = Buffer.alloc(bytes);
+			let pos = 0;
+			while (bytes > 0) {
+				const chunk = await this._readBytes(Math.min(bytes, maxChunkSize));
+				chunk.copy(buf, pos);
+				pos += chunk.length;
+				bytes -= chunk.length;
+			}
+			return buf;
 		}
 	}
 
-	async _startMessagePump() {
+	private _pump() {
+		const { sink, socket } = this;
+		if (sink) {
+			const buf: Buffer | null = socket.read(sink.bytes);
+			if (buf) {
+				if (buf.length === sink.bytes) {
+					sink.resolve(buf);
+				} else {
+					sink.reject(); // Stream has ended.
+				}
+				this.sink = null;
+			}
+		}
+	}
+
+	private async _startMessagePump(): Promise<never> {
 		this.socket.on('readable', () => this._pump());
-		this.socket.on('end', () => this.sink?.reject());
 
 		while (true) {
 			// Read and process the header.
@@ -138,10 +157,10 @@ export class StingrayConnection {
 				throw new Error(`Unknown messageType ${messageType} at socket ${this.socket.remoteAddress}`);
 			}
 
-			// Read the JSON.
+			// For some reason, messages can include trailing garbage. We clean it up before parsing.
 			const jsonBuffer = await this._readBytes(jsonLength);
-			const json = JSON.parse(jsonBuffer.toString('utf8').replace(/\0+$/g, ''));
-			// For some reason, messages can include trailing garbage. We clean it up.
+			const jsonString = jsonBuffer.toString('utf8').replace(/\0+$/g, '');
+			const json = JSON.parse(jsonString);
 
 			// Read the binary.
 			let binary;
