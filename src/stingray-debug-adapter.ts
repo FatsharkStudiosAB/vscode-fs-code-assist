@@ -6,6 +6,8 @@ import { DebugProtocol } from 'vscode-debugprotocol';
 import { StingrayConnection } from './stingray-connection';
 import { uuid4 } from './utils/functions';
 import { StingrayToolchain } from "./utils/stingray-toolchain";
+import { ChildProcess, exec } from 'child_process';
+import { rejects } from 'assert';
 
 /** Map of file paths to line numbers with breakpoints. */
 type StingrayBreakpoints = {
@@ -80,6 +82,8 @@ type StingrayAttachRequestArguments = DebugProtocol.AttachRequestArguments & {
 };
 
 type StingrayLaunchRequestArguments = DebugProtocol.LaunchRequestArguments & {
+	id: string;
+	toolchain: string;
 	loggingEnabled?: boolean;
 };
 
@@ -87,6 +91,7 @@ const THREAD_ID = 1;
 
 class StingrayDebugSession extends DebugAdapter.DebugSession {
 	connection?: StingrayConnection;
+	child?: ChildProcess;
 
 	// Breakpoints.
 	breakpoints = new Map<string, DebugProtocol.Breakpoint[]>();
@@ -257,18 +262,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		this.sendResponse(response);
 	}
 
-	protected async attachRequest(response: DebugProtocol.AttachResponse, args: StingrayAttachRequestArguments): Promise<void> {
-		const ip = args.ip;
-		const port = args.port;
-
-		let toolchain: StingrayToolchain;
-		try {
-			toolchain = new StingrayToolchain(args.toolchain);
-		} catch (err) {
-			this.sendErrorResponse(response, 1000, `Error creating Toolchain: ${err}`);
-			return;
-		}
-
+	private async connect(toolchain: StingrayToolchain, ip: string, port: number): Promise<StingrayConnection> {
 		const config = await toolchain.config();
 		const currentProject = config.Projects[config.ProjectIndex];
 		this.projectMapFolder = currentProject.SourceDirectory;
@@ -281,29 +275,86 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 			this.projectFolderMaps.set('core', path.dirname(this.coreMapFolder));
 		}
 
-		const connection = new StingrayConnection(port, ip);
+		return new Promise((resolve, reject) => {
+			const connection = new StingrayConnection(port, ip);
 
-		connection.onDidReceiveData.add(this.onStingrayMessage.bind(this));
-		connection.onDidConnect.add(async () => {
-			this.log(`Successfully connected to ${ip}:${port}`);
-			connection.sendDebuggerCommand('report_status');
-			const snippets = await readFile(path.join(__dirname, '../snippets.lua'), 'utf8');
-			connection.sendLua(snippets);
-			this.sendEvent(new DebugAdapter.InitializedEvent());
-			this.connection = connection;
-			this.sendResponse(response);
+			connection.onDidReceiveData.add(this.onStingrayMessage.bind(this));
+			connection.onDidDisconnect.add(() => {
+				this.breakpoints.clear();
+				this.callbacks.clear();
+				this.sendEvent(new DebugAdapter.OutputEvent(`Disconnected from ${ip}:${port}`));
+				this.sendEvent(new DebugAdapter.ExitedEvent(0));
+				reject();
+			});
+			connection.onDidConnect.add(async () => {
+				this.log(`Successfully connected to ${ip}:${port}`);
+				connection.sendDebuggerCommand('report_status');
+				const snippets = await readFile(path.join(__dirname, '../snippets.lua'), 'utf8');
+				connection.sendLua(snippets);
+				this.sendEvent(new DebugAdapter.InitializedEvent());
+				this.connection = connection;
+				resolve(connection);
+			});
 		});
-		connection.onDidDisconnect.add(() => {
-			this.breakpoints.clear();
-			this.callbacks.clear();
-			this.sendEvent(new DebugAdapter.OutputEvent(`Disconnected from ${ip}:${port}`));
-			this.sendEvent(new DebugAdapter.ExitedEvent(0));
+	}
+
+	protected attachRequest(response: DebugProtocol.AttachResponse, args: StingrayAttachRequestArguments) {
+		let toolchain: StingrayToolchain;
+		try {
+			toolchain = new StingrayToolchain(args.toolchain);
+		} catch (err) {
+			this.sendErrorResponse(response, 1000, `Error creating Toolchain: ${err}`);
+			return;
+		}
+
+		const connectResult = this.connect(toolchain, args.ip, args.port);
+		connectResult.then(() => {
+			this.sendResponse(response);
+		}).catch((err) => {
+			this.sendErrorResponse(response, 1000, err.toString());
 		});
 	}
 
 	protected async launchRequest(response: DebugProtocol.LaunchResponse, args: StingrayLaunchRequestArguments) {
-		this.log('NYI');
-		this.sendResponse(response);
+		let toolchain: StingrayToolchain;
+		try {
+			toolchain = new StingrayToolchain(args.toolchain);
+		} catch (err) {
+			this.sendErrorResponse(response, 1000, `Error creating Toolchain: ${err}`);
+			return;
+		}
+
+		const runSetId = args.id;
+		const config = await toolchain.config();
+		const runSet = config.RunSets.find((runSet) => {
+			return (runSetId === runSet.Id);
+		});
+		if (!runSet) {
+			this.sendErrorResponse(response, 1000, `Invalid run set ${runSetId}`);
+			return;
+		}
+
+		const enginePath = path.join(toolchain.path, 'engine', 'win64', config.Build, 'stingray_win64_dev_x64.exe');
+		const engineParams = `--wait-for-debugger 15 --toolchain ${toolchain.path} --no-compile`;
+		const options: any = { stdio: 'ignore' };
+		const child = exec(`${enginePath} ${engineParams}`, options);
+
+		child.on('spawn', () => {
+			setTimeout(() => {
+				const connectResult = this.connect(toolchain, '127.0.0.1', 14000);
+				connectResult.then(() => {
+					this.sendResponse(response);
+				}).catch((err) => {
+					this.sendErrorResponse(response, 1000, err.toString());
+					child.kill(); // Ensure the child is dead if we could not connect to it.
+				});
+			}, 1000);
+		});
+		child.on('error', () => {
+			this.sendErrorResponse(response, 1000, `Could not spawn child process.`);
+		});
+
+		this.child = child;
 	}
 
 	protected async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): Promise<void> {
@@ -346,6 +397,10 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		this.shutdown();
 		this.connection?.close();
 		this.connection = undefined;
+		if (this.child) {
+			this.child.kill();
+			this.child = undefined;
+		}
 		this.sendResponse(response);
 	}
 

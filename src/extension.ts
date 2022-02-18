@@ -9,6 +9,7 @@ import * as languageFeatures from './stingray-language-features';
 import { uuid4 } from './utils/functions';
 import { StingrayToolchain } from "./utils/stingray-toolchain";
 import { StingrayConnection } from './stingray-connection';
+import { LaunchSetTreeItem, LaunchTargetsNodeProvider } from './views/launch-targets-node-provider';
 
 let _activeToolchain: StingrayToolchain;
 export const getActiveToolchain = () => {
@@ -55,7 +56,6 @@ export function activate(context: vscode.ExtensionContext) {
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayRecompile', (arg?: ConnectionTargetTreeItem | string) => {
-		const config = vscode.workspace.getConfiguration('StingrayLua');
 		let platform: string | undefined;
 		if (typeof arg === 'string') {
 			platform = arg;
@@ -64,6 +64,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 
 		if (!platform) {
+			const config = vscode.workspace.getConfiguration('StingrayLua');
 			platform = config.get('platform') ?? 'win32';
 		}
 
@@ -227,7 +228,7 @@ export function activate(context: vscode.ExtensionContext) {
 		const attachArgs = {
 			"type": "stingray_lua",
 			"request": "attach",
-			"name": `Vermintide 2 ${connection.name}`,
+			"name": `Attach ${connection.ip}:${connection.port}`,
 			"toolchain": toolchain.path,
 			"ip" : connection.ip,
 			"port" : connection.port,
@@ -238,6 +239,22 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.debug.startDebugging(undefined, attachArgs);
 	}));
 
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayLaunch', async (element: LaunchSetTreeItem) => {
+		const toolchain = getActiveToolchain();
+		if (!toolchain) {
+			throw new Error('No active toolchain');
+		}
+		const runId = element.runSet.Id;
+		const launchArgs = {
+			"type": "stingray_lua",
+			"request": "launch",
+			"name": `Launch ${runId}`,
+			"toolchain": toolchain.path,
+			"id": runId,
+			"debugServer": 4711,
+		};
+		vscode.debug.startDebugging(undefined, launchArgs);
+	}));
 
 	// connection targets
 	let connectTargetsNodeProvider = new ConnectionTargetsNodeProvider();
@@ -261,6 +278,14 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist._refreshConnectedClients', () => {
 		connectedClientsNodeProvider.refresh();
 	}));
+
+	// Launch targets panel.
+	let launchTargetsNodeProvider = new LaunchTargetsNodeProvider();
+	vscode.window.createTreeView('fs-code-assist-launch', {
+		treeDataProvider: launchTargetsNodeProvider,
+		showCollapseAll: false,
+		canSelectMany: true
+	});
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist._focusOutput', (connection: StingrayConnection) => {
 		const outputChannel = connectionHandler.getOutputForConnection(connection) as vscode.OutputChannel;
