@@ -5,6 +5,9 @@ import type { ToolchainConfig, ToolchainConfigRunSet, ToolchainConfigTarget } fr
 import { formatCommand } from '../utils/vscode';
 
 export class LaunchTargetsNodeProvider implements vscode.TreeDataProvider<LaunchSetTreeItem> {
+	private _onDidChangeTreeData: vscode.EventEmitter<LaunchSetTreeItem | undefined | void> = new vscode.EventEmitter<LaunchSetTreeItem | undefined | void>();
+	readonly onDidChangeTreeData: vscode.Event<LaunchSetTreeItem | undefined | void> = this._onDidChangeTreeData.event;
+
 	getTreeItem(element: LaunchSetTreeItem): vscode.TreeItem | Thenable<vscode.TreeItem> {
 		return element;
 	}
@@ -20,6 +23,10 @@ export class LaunchTargetsNodeProvider implements vscode.TreeDataProvider<Launch
 			return new LaunchSetTreeItem(runSet, config);
 		});
 		return treeItems;
+	}
+
+	refresh(): void {
+		this._onDidChangeTreeData.fire();
 	}
 }
 

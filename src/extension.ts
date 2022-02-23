@@ -228,7 +228,7 @@ export function activate(context: vscode.ExtensionContext) {
 		const attachArgs = {
 			"type": "stingray_lua",
 			"request": "attach",
-			"name": `Attach ${connection.ip}:${connection.port}`,
+			"name": `${connection.ip}:${connection.port}`,
 			"toolchain": toolchain.path,
 			"ip" : connection.ip,
 			"port" : connection.port,
@@ -244,14 +244,13 @@ export function activate(context: vscode.ExtensionContext) {
 		if (!toolchain) {
 			throw new Error('No active toolchain');
 		}
-		const runId = element.runSet.Id;
 		const launchArgs = {
 			"type": "stingray_lua",
 			"request": "launch",
-			"name": `Launch ${runId}`,
+			"name": element.runSet.Name,
 			"toolchain": toolchain.path,
-			"id": runId,
-			"debugServer": 4711,
+			"id": element.runSet.Id,
+			//"debugServer": 4711,
 		};
 		vscode.debug.startDebugging(undefined, launchArgs);
 	}));
@@ -263,9 +262,6 @@ export function activate(context: vscode.ExtensionContext) {
 		showCollapseAll: false,
 		canSelectMany: false
 	});
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.refreshTargets', () => {
-		connectTargetsNodeProvider.refresh();
-	}));
 
 	// Connected clients panel
 	let connectedClientsNodeProvider = new ConnectedClientsNodeProvider();
@@ -286,6 +282,11 @@ export function activate(context: vscode.ExtensionContext) {
 		showCollapseAll: false,
 		canSelectMany: true
 	});
+
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.refreshTargets', () => {
+		connectTargetsNodeProvider.refresh();
+		launchTargetsNodeProvider.refresh();
+	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist._focusOutput', (connection: StingrayConnection) => {
 		const outputChannel = connectionHandler.getOutputForConnection(connection) as vscode.OutputChannel;

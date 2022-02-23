@@ -335,29 +335,30 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 			return (runSetId === runSet.Id);
 		});
 		if (!runSet) {
-			this.sendErrorResponse(response, 1000, `Invalid run set ${runSetId}`);
+			this.sendErrorResponse(response, 1000, `Run set ${runSetId} does not exist`);
 			return;
 		}
+		if (runSet.RunItems.length !== 1) {
+			this.sendErrorResponse(response, 1000, `Run set ${runSetId} must have exactly 1 item`);
+			return;
+		}
+		const runItem = runSet.RunItems[0];
 
-		const invalidPlatform = runSet.RunItems.some((item) => {
-			if (item.Target !== '00000000-1111-2222-3333-444444444444') {
-				return true;
-			}
-		});
-		if (invalidPlatform) {
-			this.sendErrorResponse(response, 1000, 'Launching a run set with non-localhost targets is not currently supported');
+		if (runItem.Target !== '00000000-1111-2222-3333-444444444444') {
+			this.sendErrorResponse(response, 1000, `Run set ${runSetId} must launch on localhost`);
 			return;
 		}
 
 		const enginePath = path.join(toolchain.path, 'engine', 'win64', config.Build, 'stingray_win64_dev_x64.exe');
 		const engineCommonParams = `--wait-for-debugger ${wait_for_debugger} --toolchain ${toolchain.path} --no-compile`;
-		const options: any = { detached: false }; // Unrecognized type?
 
-		for (const item of runSet.RunItems) {
-			const child = exec(`${enginePath} ${engineCommonParams} ${item.ExtraLaunchParameters}`, options);
+		// This next thing is an array because in the future we might want to make it that way.
+		runSet.RunItems.forEach(async (item) => {
+			const child = exec(`${enginePath} ${engineCommonParams} ${item.ExtraLaunchParameters}`);
 
 			child.on('error', () => {
 				this.sendErrorResponse(response, 1000, `Could not spawn child process.`);
+				killProcessTree(child);
 			});
 
 			let port = 0;
@@ -366,7 +367,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 				//crlfDelay: Infinity,
 			});
 			for await (const line of rl) {
-				const match = /@CONSOLE_PORT=(\d+)@/.exec(line);
+				const match = /Started console server \((\d+)\)/.exec(line);
 				if (match) {
 					port = parseInt(match[1], 10);
 					break;
@@ -378,10 +379,10 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 				this.children.push(child);
 				this.sendResponse(response);
 			}).catch((err) => {
-				this.sendErrorResponse(response, 1000, `Could not connect to child process.`);
-				killProcessTree(child); // Ensure the child is dead if we could not connect to it.
+				this.sendErrorResponse(response, 1000, `Could not connect to child process: ${err.toString()}`);
+				killProcessTree(child);
 			});
-		}
+		});
 	}
 
 	protected async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): Promise<void> {
