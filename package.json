@@ -30,6 +30,7 @@
   "activationEvents": [
     "onCommand:fatshark-code-assist.stingrayConnect",
     "onCommand:fatshark-code-assist.stingrayRecompile",
+    "onUri",
     "onLanguage:lua",
     "onLanguage:sjson",
     "onTaskType:stingray_lua"

@@ -9,6 +9,7 @@ import * as languageFeatures from './stingray-language-features';
 import { uuid4 } from './utils/functions';
 import { StingrayToolchain } from "./utils/stingray-toolchain";
 import { StingrayConnection } from './stingray-connection';
+import { URLSearchParams } from 'url';
 
 let _activeToolchain: StingrayToolchain;
 export const getActiveToolchain = () => {
@@ -224,20 +225,44 @@ export function activate(context: vscode.ExtensionContext) {
 			return;
 		}
 
+		const { ip, port } = connection;
+
 		const attachArgs = {
 			"type": "stingray_lua",
 			"request": "attach",
 			"name": `Vermintide 2 ${connection.name}`,
 			"toolchain": toolchain.path,
-			"ip" : connection.ip,
-			"port" : connection.port,
+			"ip" : ip,
+			"port" : port,
 		};
 
-		const outputChannel = connectionHandler.getOutputForConnection(connection) as vscode.OutputChannel;
-		outputChannel.show();
+		const outputChannel = connectionHandler.getOutputForConnection(connection);
+		if (outputChannel) {
+			outputChannel.show();
+		} else {
+			connectionHandler.getGame(port, ip);
+		}
 		vscode.debug.startDebugging(undefined, attachArgs);
 	}));
 
+
+	context.subscriptions.push(vscode.window.registerUriHandler({
+		handleUri(uri: vscode.Uri): vscode.ProviderResult<void> {
+			const command = uri.path.replace(/^\//, "");
+			if (command !== "attach") {
+				vscode.window.showErrorMessage(`Command ${command} is invalid for FS Code Assist.`);
+				return;
+			}
+			const params = new URLSearchParams(uri.query);
+			const ip = params.get("ip") || "localhost";
+			const port = parseInt(params.get("port") || "", 10);
+			if (!ip || !port) {
+				vscode.window.showErrorMessage(`Missing ip or port arguments for /attach command.`);
+				return;
+			}
+			vscode.commands.executeCommand("fatshark-code-assist.attachDebugger", { ip, port });
+		}
+	}));
 
 	// connection targets
 	let connectTargetsNodeProvider = new ConnectionTargetsNodeProvider();
