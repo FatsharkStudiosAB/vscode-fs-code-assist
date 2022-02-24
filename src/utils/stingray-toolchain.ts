@@ -4,9 +4,12 @@ import { join as pathJoin } from 'path';
 import * as SJSON from 'simplified-json';
 import { ToolchainConfig } from './stingray-config';
 
+/** A Stingray toolchain represents an installation of the engine and its associated tools. */
 export class StingrayToolchain {
+	/** Path to the toolchain's SJSON configuration file. */
 	public configPath: string;
 	constructor(
+		/** Path to the toolchain root directory. */
 		public readonly path: string
 	) {
 		this.configPath = pathJoin(this.path, 'settings', 'ToolChainConfiguration.config');

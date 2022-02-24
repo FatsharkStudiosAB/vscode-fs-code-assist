@@ -105,6 +105,12 @@
         "icon": "$(debug-alt)"
       },
       {
+        "command": "fatshark-code-assist.stingrayLaunch",
+        "title": "Launch all instances",
+        "category": "Stingray",
+        "icon": "$(run-all)"
+      },
+      {
         "command": "fatshark-code-assist.refreshTargets",
         "title": "Refresh connection targets",
         "category": "Stingray",
@@ -123,6 +129,10 @@
         },
         {
           "command": "fatshark-code-assist.selectionTarget",
+          "when": "false"
+        },
+        {
+          "command": "fatshark-code-assist.stingrayLaunch",
           "when": "false"
         },
         {
@@ -174,6 +184,11 @@
         {
           "command": "fatshark-code-assist.selectionTarget",
           "when": "viewItem == connected-client"
+        },
+        {
+          "command": "fatshark-code-assist.stingrayLaunch",
+          "when": "viewItem == launch-set",
+          "group": "inline@1"
         },
         {
           "command": "fatshark-code-assist.stingrayConnect",
@@ -334,6 +349,11 @@
         {
           "id": "fs-code-assist-clients",
           "name": "Connected Clients",
+          "when": "fatshark-code-assist:isStingrayProject"
+        },
+        {
+          "id": "fs-code-assist-launch",
+          "name": "Launch Configurations",
           "when": "fatshark-code-assist:isStingrayProject"
         }
       ]
