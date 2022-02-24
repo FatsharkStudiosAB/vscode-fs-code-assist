@@ -382,7 +382,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 			const connectResult = this.connect(toolchain, 'localhost', port);
 			connectResult.then(() => {
 				this.children.push(child);
-				this.sendEvent(new DebugAdapter.OutputEvent(`Connected to '${runSet.Name}' at localhost:${port}`));
+				this.sendEvent(new DebugAdapter.OutputEvent(`Connected to '${runSet.Name}' at localhost:${port}\r\n`));
 				this.sendResponse(response);
 			}).catch((err) => {
 				this.sendErrorResponse(response, 1000, `Could not connect to child process: ${err.toString()}`);
