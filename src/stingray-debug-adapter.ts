@@ -351,10 +351,13 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 
 		const enginePath = path.join(toolchain.path, 'engine', 'win64', config.Build, 'stingray_win64_dev_x64.exe');
 		const engineCommonParams = `--wait-for-debugger ${wait_for_debugger} --toolchain ${toolchain.path} --no-compile`;
+		const options: any = { // Type must be any because otherwise stdio isn't recognized.
+			stdio: [ 'ignore', 'pipe', 'ignore '],
+		};
 
 		// This next thing is an array because in the future we might want to make it that way.
 		runSet.RunItems.forEach(async (item) => {
-			const child = exec(`${enginePath} ${engineCommonParams} ${item.ExtraLaunchParameters}`);
+			const child = exec(`${enginePath} ${engineCommonParams} ${item.ExtraLaunchParameters}`, options);
 
 			child.on('error', () => {
 				this.sendErrorResponse(response, 1000, `Could not spawn child process.`);
@@ -364,7 +367,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 			let port = 0;
 			const rl = readline.createInterface({
 				input: child.stdout!,
-				//crlfDelay: Infinity,
+				crlfDelay: Infinity,
 			});
 			for await (const line of rl) {
 				const match = /Started console server \((\d+)\)/.exec(line);
@@ -373,10 +376,13 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 					break;
 				}
 			}
+			rl.close();
+			child.stdout!.destroy();
 
 			const connectResult = this.connect(toolchain, 'localhost', port);
 			connectResult.then(() => {
 				this.children.push(child);
+				this.sendEvent(new DebugAdapter.OutputEvent(`Connected to '${runSet.Name}' at localhost:${port}`));
 				this.sendResponse(response);
 			}).catch((err) => {
 				this.sendErrorResponse(response, 1000, `Could not connect to child process: ${err.toString()}`);
