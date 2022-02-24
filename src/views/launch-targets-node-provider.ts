@@ -37,7 +37,7 @@ export class LaunchSetTreeItem extends vscode.TreeItem {
 	) {
 		super(runSet.Name, vscode.TreeItemCollapsibleState.None);
 
-		const launchUri = formatCommand('fatshark-code-assist.stingrayLaunch', runSet.Id);
+		//const launchUri = formatCommand('fatshark-code-assist.stingrayLaunch', runSet.Id);
 		const tooltip = new vscode.MarkdownString();
 		tooltip.isTrusted = true;
 		runSet.RunItems.forEach((runItem, i) => {
@@ -45,7 +45,7 @@ export class LaunchSetTreeItem extends vscode.TreeItem {
 				tooltip.appendMarkdown('\n---\n');
 			}
 			const target = this.findTarget(runItem.Target);
-			tooltip.appendMarkdown(`**Instance ${i+1}** on _${target.Name}_ ([Launch](${launchUri}))\n`);
+			tooltip.appendMarkdown(`**Instance ${i+1}** on _${target.Name}_\n`);
 			const chunks: string[][] = [];
 			let currentChunk: string[];
 			runItem.ExtraLaunchParameters.split(/ +/).forEach((param: string) => {
