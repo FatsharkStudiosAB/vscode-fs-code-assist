@@ -7,24 +7,31 @@ const IDENTIFY_TIMEOUT = 5000; // Milliseconds.
 const IDENTIFY_COMMAND = "stingray_identify";
 const IDENTIFY_LUA = `
 print("[VSCode] Identifying instance...")
+local function GET(obj, method, default)
+	return (function(ok, ...)
+		if ok then return ... end
+		return default
+	end)(pcall(obj and obj[method]))
+end
 stingray.Application.console_send({
-	type = "${IDENTIFY_COMMAND}",
+	type = "stingray_identify",
 	info = {
-		--[[ sysinfo = Application.sysinfo(), ]]
-		argv = { Application.argv() },
-		build = rawget(_G, "BUILD") or Application.build(),
-		build_identifier = Application.build_identifier(),
-		bundled = Application.bundled(),
-		console_port = Application.console_port(),
-		is_dedicated_server = Application.is_dedicated_server(),
-		machine_id = Application.machine_id(),
-		platform = rawget(_G, "PLATFORM") or Application.platform(),
-		plugins = Application.all_plugin_names(),
-		process_id = Application.process_id(),
-		session_id = Application.session_id(),
-		source_platform = Application.source_platform(),
-		time_since_launch = Application.time_since_launch(),
-		title = Window.title and Window.title() or "Stingray",
+		--[[ sysinfo = Application.sysinfo(), Too long! ]]
+		argv = { GET(Application, "argv", "#ERROR!") },
+		build = GET(Application, "build", BUILD),
+		build_identifier = GET(Application, "build_identifier", BUILD_IDENTIFIER),
+		bundled = GET(Application, "bundled"),
+		console_port = GET(Application, "console_port"),
+		is_dedicated_server = GET(Application, "is_dedicated_server"),
+		machine_id = GET(Application, "machine_id"),
+		platform = GET(Application, "platform", PLATFORM),
+		plugins = GET(Application, "all_plugin_names"),
+		process_id = GET(Application, "process_id"),
+		session_id = GET(Application, "session_id"),
+		source_platform = GET(Application, "source_platform"),
+		time_since_launch = GET(Application, "time_since_launch"),
+		title = GET(Window, "title", "Stingray"),
+		jit = { GET(jit, "status") } ,
 	},
 })
 `;
@@ -34,10 +41,10 @@ export class ConnectedClientsNodeProvider implements vscode.TreeDataProvider<Sti
 	readonly onDidChangeTreeData: vscode.Event<StingrayConnection | undefined | void> = this._onDidChangeTreeData.event;
 
 	getTreeItem(connection: StingrayConnection): vscode.TreeItem | Thenable<vscode.TreeItem> {
-		return new Promise<vscode.TreeItem>((resolve) => {
+		return new Promise<vscode.TreeItem>(async (resolve) => {
 			let timeoutId: NodeJS.Timeout;
 			const onData = (data: any) => {
-				if (data.type === IDENTIFY_COMMAND) {
+				if (data.type === "stingray_identify") {
 					connection.onDidReceiveData.remove(onData);
 					clearTimeout(timeoutId);
 					resolve(new ConnectedClientTreeItem(data.info, connection));

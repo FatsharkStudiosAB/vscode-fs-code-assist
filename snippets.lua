@@ -80,6 +80,9 @@ local function format_value(value, name, include_children, is_nested)
 			local iterationValue = value
 			if kind == "function" then
 				iterationValue = util.funcinfo(value)
+				if iterationValue.addr then
+					iterationValue.addr = string.format("%016x", iterationValue.addr)
+				end
 			end
 			for k, v in pairs(iterationValue) do
 				children[#children+1] = format_value(v, k)
