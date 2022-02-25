@@ -1,5 +1,4 @@
 import { basename } from "path";
-import path = require("path");
 import * as SJSON from 'simplified-json';
 import { TextDecoder } from "util";
 import * as vscode from "vscode";

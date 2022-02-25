@@ -14,8 +14,12 @@ export const uuid4 = (): string => {
 	});
 };
 
-export const getTimestamp = (): string => {
-	const date = new Date();
+/**
+ * Render a date as a string timestamp, in a format similar used by Stingray logging.
+ * @param date The date to render. Defaults to the current date.
+ * @returns A string representation of the date as a timestamp.
+ */
+export const getTimestamp = (date = new Date): string => {
 	const hh = date.getHours().toString().padStart(2,"0");
 	const mm = date.getMinutes().toString().padStart(2,"0");
 	const ss = date.getSeconds().toString().padStart(2,"0");

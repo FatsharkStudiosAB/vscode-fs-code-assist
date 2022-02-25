@@ -7,6 +7,7 @@ import { connectionHandler, MAX_CONNECTIONS } from './connection-handler';
 import { StingrayConnection } from './stingray-connection';
 import * as languageFeatures from './stingray-language-features';
 import { uuid4 } from './utils/functions';
+import { ToolchainConfigRunSet } from './utils/stingray-config';
 import { StingrayToolchain } from "./utils/stingray-toolchain";
 import { ConnectedClientsNodeProvider } from './views/connected-clients-node-provider';
 import { ConnectionTargetsNodeProvider, ConnectionTargetTreeItem } from './views/connection-targets-node-provider';
@@ -246,37 +247,68 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.debug.startDebugging(undefined, attachArgs);
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayLaunch', async (element: LaunchSetTreeItem) => {
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayLaunch', async (element: any) => {
 		const toolchain = getActiveToolchain();
 		if (!toolchain) {
 			throw new Error('No active toolchain');
 		}
-		const launchArgs = {
-			"type": "stingray_lua",
-			"request": "launch",
-			"name": element.runSet.Name,
-			"toolchain": toolchain.path,
-			"id": element.runSet.Id,
-			//"debugServer": 4711,
-		};
-		vscode.debug.startDebugging(undefined, launchArgs);
+
+		let runSet: ToolchainConfigRunSet;
+		if (element instanceof LaunchSetTreeItem) {
+			runSet = element.runSet;
+		} else if (typeof element === 'string') {
+			const config = await toolchain.config();
+			const foundRunSet = config.RunSets.find((runSet) => runSet.Id === element);
+			if (!foundRunSet) {
+				vscode.window.showErrorMessage(`No run set with given id found: ${element}`);
+				return;
+			}
+			runSet = foundRunSet;
+		} else {
+			vscode.window.showErrorMessage(`Invald argument ${element}`);
+			return;
+		}
+
+		runSet.RunItems.forEach((runItem, i) => {
+			let name = runSet.Name;
+			if (runSet.RunItems.length > 1) {
+				name += ` (Instance ${i+1})`;
+			}
+			const launchArgs = {
+				"type": "stingray_lua",
+				"request": "launch",
+				"name": name,
+				"toolchain": toolchain.path,
+				"targetId": runItem.Target,
+				"arguments": runItem.ExtraLaunchParameters,
+				//"debugServer": 4711,
+			};
+			vscode.debug.startDebugging(undefined, launchArgs);
+		});
 	}));
 
 	context.subscriptions.push(vscode.window.registerUriHandler({
 		handleUri(uri: vscode.Uri): vscode.ProviderResult<void> {
 			const command = uri.path.replace(/^\//, "");
-			if (command !== "attach") {
-				vscode.window.showErrorMessage(`Command ${command} is invalid for FS Code Assist.`);
-				return;
-			}
 			const params = new URLSearchParams(uri.query);
-			const ip = params.get("ip") || "localhost";
-			const port = parseInt(params.get("port") || "", 10);
-			if (!ip || !port) {
-				vscode.window.showErrorMessage(`Missing ip or port arguments for /attach command.`);
-				return;
+			if (command === "attach") {
+				const ip = params.get("ip") || "localhost";
+				const port = parseInt(params.get("port") || "", 10);
+				if (!ip || !port) {
+					vscode.window.showErrorMessage(`Missing ip or port arguments for /attach command.`);
+					return;
+				}
+				vscode.commands.executeCommand("fatshark-code-assist.attachDebugger", { ip, port });
+			} else if (command === "launch") {
+				const runSetId = params.get("runSetId");
+				if (!runSetId) {
+					vscode.window.showErrorMessage(`Missing runSetId arguments for /launch command.`);
+					return;
+				}
+				vscode.commands.executeCommand("fatshark-code-assist.stingrayLaunch", runSetId);
+			} else {
+				vscode.window.showErrorMessage(`Unknown command: ${command}`);
 			}
-			vscode.commands.executeCommand("fatshark-code-assist.attachDebugger", { ip, port });
 		}
 	}));
 

@@ -2,7 +2,6 @@
 import * as vscode from 'vscode';
 import { getActiveToolchain } from '../extension';
 import type { ToolchainConfig, ToolchainConfigRunSet, ToolchainConfigTarget } from '../utils/stingray-config';
-import { formatCommand } from '../utils/vscode';
 
 export class LaunchTargetsNodeProvider implements vscode.TreeDataProvider<LaunchSetTreeItem> {
 	private _onDidChangeTreeData: vscode.EventEmitter<LaunchSetTreeItem | undefined | void> = new vscode.EventEmitter<LaunchSetTreeItem | undefined | void>();

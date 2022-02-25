@@ -1,18 +1,20 @@
+/* eslint-disable @typescript-eslint/naming-convention */
+
 type EngineCallstack = EngineCallstackFrame[];
 
 type EngineCallstackFrame = {
 	local: EngineCallstackRecord[];
-	up_values: EngineCallstackRecord[]; // eslint-disable-line @typescript-eslint/naming-convention
+	up_values: EngineCallstackRecord[]; 
 	source: string;
 	line: number;
-	function_start_line: number; // eslint-disable-line @typescript-eslint/naming-convention
+	function_start_line: number;
 	function?: string;
 };
 
 type EngineCallstackRecord = {
 	type: string;
 	value: string;
-	var_name: string; // eslint-disable-line @typescript-eslint/naming-convention
+	var_name: string;
 	key?: string;
 };
 

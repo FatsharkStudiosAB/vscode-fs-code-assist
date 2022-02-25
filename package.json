@@ -371,15 +371,27 @@
         "runtime": "node",
         "configurationSnippets": [
           {
-            "label": "Stingray: Application (Lua)",
-            "description": "A new configuration for launching and debugging a Stingray project.",
+            "label": "Stingray: Launch",
+            "description": "Launch the engine and immediately attach the debugger.",
+            "body": {
+              "type": "stingray_lua",
+              "request": "launch",
+              "toolchain": "C:/BitSquidBinaries/${2:vermintide2}",
+              "targetId": "00000000-1111-2222-3333-444444444444",
+              "arguments": "",
+              "name": "${1:My Launch Configuration}"
+            }
+          },
+          {
+            "label": "Stingray: Attach",
+            "description": "Attach to a running instance of the engine.",
             "body": {
               "type": "stingray_lua",
               "request": "attach",
-              "name": "${1:My application name}",
               "toolchain": "C:/BitSquidBinaries/${2:vermintide2}",
-              "ip": "127.0.0.1",
-              "port": 14000
+              "ip": "{3:localhost}",
+              "port": "${4:14000}",
+              "name": "${5:Attach to ${3}:${4}}"
             }
           }
         ],
@@ -393,7 +405,7 @@
             "properties": {
               "ip": {
                 "type": "string",
-                "description": "IP address of the device running the Stingray engine.",
+                "description": "IP address of the device running the engine.",
                 "default": "127.0.0.1"
               },
               "port": {
@@ -403,7 +415,34 @@
               },
               "toolchain": {
                 "type": "string",
-                "description": "the full directory where your toolchain resides (e.g. c:/project/mytoolchain)",
+                "description": "The absolute path to the toolchain (eg. C:/BitSquidBinaries/vermintide2).",
+                "toolchain": "C:/BitSquidBinaries/vermintide2"
+              }
+            }
+          },
+          "launch": {
+            "required": [
+              "targetId",
+              "toolchain"
+            ],
+            "properties": {
+              "targetId": {
+                "type": "string",
+                "description": "UUID of the launch set to start.",
+                "default": "127.0.0.1"
+              },
+              "timeout": {
+                "type": "number",
+                "description": "Seconds until the connection is aborted..",
+                "default": 15
+              },
+              "arguments": {
+                "type": "string",
+                "description": "Extra launch arguments."
+              },
+              "toolchain": {
+                "type": "string",
+                "description": "The absolute path to the toolchain (eg. C:/BitSquidBinaries/vermintide2).",
                 "toolchain": "C:/BitSquidBinaries/vermintide2"
               }
             }

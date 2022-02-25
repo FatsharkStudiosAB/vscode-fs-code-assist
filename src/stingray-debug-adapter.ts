@@ -1,14 +1,13 @@
+import { ChildProcess, exec } from 'child_process';
 import { existsSync as fileExists } from 'fs';
-import * as readline from 'readline';
 import { readFile } from 'fs/promises';
 import * as path from 'path';
+import * as readline from 'readline';
 import * as DebugAdapter from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { StingrayConnection } from './stingray-connection';
 import { uuid4 } from './utils/functions';
 import { StingrayToolchain } from "./utils/stingray-toolchain";
-import { ChildProcess, exec } from 'child_process';
-import { killProcessTree } from './utils/process';
 
 /** Map of file paths to line numbers with breakpoints. */
 type StingrayBreakpoints = {
@@ -76,24 +75,25 @@ class StingrayVariable extends DebugAdapter.Variable {
 };
 
 type StingrayAttachRequestArguments = DebugProtocol.AttachRequestArguments & {
-	ip: string;
-	port: number;
 	toolchain: string;
 	loggingEnabled?: boolean;
+	ip: string;
+	port: number;
 };
 
 type StingrayLaunchRequestArguments = DebugProtocol.LaunchRequestArguments & {
-	id: string;
 	toolchain: string;
-	wait_for_debugger?: number;
 	loggingEnabled?: boolean;
+	targetId: string;
+	timeout?: number;
+	arguments?: string;
 };
 
 const THREAD_ID = 1;
 
 class StingrayDebugSession extends DebugAdapter.DebugSession {
 	connection?: StingrayConnection;
-	children: ChildProcess[] = [];
+	child?: ChildProcess;
 
 	// Breakpoints.
 	breakpoints = new Map<string, DebugProtocol.Breakpoint[]>();
@@ -284,13 +284,13 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 			connection.onDidDisconnect.add(() => {
 				this.breakpoints.clear();
 				this.callbacks.clear();
-				this.sendEvent(new DebugAdapter.OutputEvent(`Disconnected from ${ip}:${port}`));
+				this.sendEvent(new DebugAdapter.OutputEvent(`Disconnected from ${ip}:${port}\r\n`, 'console'));
 				this.sendEvent(new DebugAdapter.TerminatedEvent()); // Debugging ended.
 				this.sendEvent(new DebugAdapter.ExitedEvent(0)); // Debuggee is "dead".
 				reject();
 			});
 			connection.onDidConnect.add(async () => {
-				this.log(`Successfully connected to ${ip}:${port}`);
+				this.sendEvent(new DebugAdapter.OutputEvent(`Connected to ${ip}:${port}\r\n`, 'console'));
 				connection.sendDebuggerCommand('report_status');
 				const snippets = await readFile(path.join(__dirname, '../snippets.lua'), 'utf8');
 				connection.sendLua(snippets);
@@ -302,6 +302,8 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 	}
 
 	protected attachRequest(response: DebugProtocol.AttachResponse, args: StingrayAttachRequestArguments) {
+		this.loggingEnabled = args.loggingEnabled ?? false;
+
 		let toolchain: StingrayToolchain;
 		try {
 			toolchain = new StingrayToolchain(args.toolchain);
@@ -310,7 +312,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 			return;
 		}
 
-		const connectResult = this.connect(toolchain, args.ip, args.port);
+		const connectResult = this.connect(toolchain, args.ip ?? 'localhost', args.port);
 		connectResult.then(() => {
 			this.sendResponse(response);
 		}).catch((err) => {
@@ -318,7 +320,23 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		});
 	}
 
+	private async killChild() {
+		const child = this.child;
+		if (!child) {
+			return Promise.resolve(false);
+		}
+		this.child = undefined;
+		return new Promise<boolean>((resolve) => {
+			exec(`taskkill /pid ${child.pid} /T /F`, (error) => {
+				const code = error?.code || 0;
+				resolve(code === 0);
+			});
+		});
+	}
+
 	protected async launchRequest(response: DebugProtocol.LaunchResponse, args: StingrayLaunchRequestArguments) {
+		this.loggingEnabled = args.loggingEnabled ?? false;
+
 		let toolchain: StingrayToolchain;
 		try {
 			toolchain = new StingrayToolchain(args.toolchain);
@@ -327,68 +345,46 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 			return;
 		}
 
-		const wait_for_debugger = args.wait_for_debugger || 15;
+		const timeout = args.timeout ?? 15;
 
-		const runSetId = args.id;
-		const config = await toolchain.config();
-		const runSet = config.RunSets.find((runSet) => {
-			return (runSetId === runSet.Id);
+		const child = await toolchain.launch({
+			targetId: args.targetId ?? '00000000-1111-2222-3333-444444444444',
+			arguments: `--no-compile --wait-for-debugger ${timeout} ${args.arguments}`,
 		});
-		if (!runSet) {
-			this.sendErrorResponse(response, 1000, `Run set ${runSetId} does not exist`);
-			return;
-		}
-		if (runSet.RunItems.length !== 1) {
-			this.sendErrorResponse(response, 1000, `Run set ${runSetId} must have exactly 1 item`);
-			return;
-		}
-		const runItem = runSet.RunItems[0];
+		this.child = child;
 
-		if (runItem.Target !== '00000000-1111-2222-3333-444444444444') {
-			this.sendErrorResponse(response, 1000, `Run set ${runSetId} must launch on localhost`);
-			return;
-		}
+		child.on('error', () => {
+			this.killChild();
+			this.sendErrorResponse(response, 1000, 'Error launching the instance');
+		});
 
-		const enginePath = path.join(toolchain.path, 'engine', 'win64', config.Build, 'stingray_win64_dev_x64.exe');
-		const engineCommonParams = `--wait-for-debugger ${wait_for_debugger} --toolchain ${toolchain.path} --no-compile`;
-		const options: any = { // Type must be any because otherwise stdio isn't recognized.
-			stdio: [ 'ignore', 'pipe', 'ignore '],
-		};
+		let timeoutId: NodeJS.Timeout;
+		timeoutId = setTimeout(() => {
+			this.killChild();
+			this.sendErrorResponse(response, 1000, 'Timed out waiting for port');
+		}, timeout*1000);
 
-		// This next thing is an array because in the future we might want to make it that way.
-		runSet.RunItems.forEach(async (item) => {
-			const child = exec(`${enginePath} ${engineCommonParams} ${item.ExtraLaunchParameters}`, options);
-
-			child.on('error', () => {
-				this.sendErrorResponse(response, 1000, `Could not spawn child process.`);
-				killProcessTree(child);
-			});
-
-			let port = 0;
-			const rl = readline.createInterface({
-				input: child.stdout!,
-				crlfDelay: Infinity,
-			});
-			for await (const line of rl) {
-				const match = /Started console server \((\d+)\)/.exec(line);
-				if (match) {
-					port = parseInt(match[1], 10);
-					break;
-				}
+		// Find console server port in the process standard output.
+		let port = 0;
+		const rl = readline.createInterface({
+			input: child.stdout!,
+			crlfDelay: Infinity,
+		});
+		for await (const line of rl) {
+			const match = /Started console server \((\d+)\)/.exec(line);
+			if (match) {
+				port = parseInt(match[1], 10);
+				break;
 			}
-			rl.close();
-			child.stdout!.destroy();
+		}
+		if (timeoutId) {
+			clearTimeout(timeoutId);
+		}
+		// Close streams to not block the child.
+		rl.close();
+		child.stdout!.destroy();
 
-			const connectResult = this.connect(toolchain, 'localhost', port);
-			connectResult.then(() => {
-				this.children.push(child);
-				this.sendEvent(new DebugAdapter.OutputEvent(`Connected to '${runSet.Name}' at localhost:${port}\r\n`));
-				this.sendResponse(response);
-			}).catch((err) => {
-				this.sendErrorResponse(response, 1000, `Could not connect to child process: ${err.toString()}`);
-				killProcessTree(child);
-			});
-		});
+		this.sendResponse(response);
 	}
 
 	protected async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): Promise<void> {
@@ -417,9 +413,14 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 	}
 
 	public shutdown(): void {
-		// Ensure the debuggee is not stopped.
+		// Ensure the debuggee is not paused.
 		this.connection?.sendDebuggerCommand('set_breakpoints', { breakpoints: {} });
 		this.connection?.sendDebuggerCommand('continue');
+
+		this.connection?.close();
+		this.connection = undefined;
+
+		this.killChild();
 	}
 
 	protected restartRequest(response: DebugProtocol.RestartResponse, args: DebugProtocol.RestartArguments): void {
@@ -429,12 +430,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 
 	protected disconnectRequest(response: DebugProtocol.DisconnectResponse, _args: DebugProtocol.DisconnectArguments): void {
 		this.shutdown();
-		this.connection?.close();
-		this.connection = undefined;
-		this.children.forEach((child) => {
-			killProcessTree(child);
-		});
-		this.children.length = 0;
+		
 		this.sendResponse(response);
 	}
 
