@@ -57,6 +57,8 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.setStatusBarMessage("Sources reloaded.", 3000);
 	}));
 
+	const activeCompilations = new Set<string>();
+
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayRecompile', (arg?: ConnectionTargetTreeItem | string) => {
 		let platform: string | undefined;
 		if (typeof arg === 'string') {
@@ -70,7 +72,12 @@ export function activate(context: vscode.ExtensionContext) {
 			platform = config.get('platform') ?? 'win32';
 		}
 
-		vscode.window.withProgress({
+		if (activeCompilations.has(platform)) {
+			return; // No.
+		}
+		activeCompilations.add(platform);
+
+		const thenable = vscode.window.withProgress({
 			location: vscode.ProgressLocation.Notification
 		}, (progress, token) => new Promise<void>(async (resolve, reject) => {
 			const toolchain = getActiveToolchain();
@@ -107,6 +114,9 @@ export function activate(context: vscode.ExtensionContext) {
 			};
 
 			compiler.onDidReceiveData.add(onData);
+			compiler.onDidDisconnect.add(() => {
+				resolve();
+			});
 
 			token.onCancellationRequested(() => {
 				compiler.onDidReceiveData.remove(onData);
@@ -134,6 +144,11 @@ export function activate(context: vscode.ExtensionContext) {
 				"platform" : platform,
 			});
 		}));
+
+		thenable.then(
+			() => activeCompilations.delete(platform!), // onfulfilled
+			() => activeCompilations.delete(platform!)  // onrejected
+		);
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayConnect', (element?: ConnectionTargetTreeItem) => {
