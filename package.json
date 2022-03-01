@@ -3,7 +3,7 @@
   "displayName": "Fatshark Code Assist",
   "description": "Stingray Intellisense, debugging and code browsing.",
   "icon": "resources/fs-code-assist.png",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "publisher": "Fatshark",
   "engines": {
     "vscode": "^1.63.0"
