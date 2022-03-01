@@ -77,11 +77,7 @@ export class StingrayToolchain {
 		const platformDirectory = 'win64';
 
 		const engineExe = path.join(this.path, 'engine', platformDirectory, config.Build, StingrayToolchain.buildToExecutableName[config.Build]);
-		const engineArguments = `--toolchain ${this.path} ${options.arguments || ''} `;
-		const engineCommand = `${engineExe} ${engineArguments} ${options.arguments ?? ''}`;
-		const execOptions = { // Type must be any because otherwise stdio isn't recognized.
-			stdio: [ 'ignore', 'pipe', 'ignore '],
-		} as ExecOptions;
-		return exec(engineCommand, execOptions);
+		const engineArguments = `--toolchain ${this.path} ${options.arguments ?? ''} `;
+		return exec(`${engineExe} ${engineArguments}`);
 	}
 }

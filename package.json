@@ -422,19 +422,18 @@
           },
           "launch": {
             "required": [
-              "targetId",
               "toolchain"
             ],
             "properties": {
               "targetId": {
                 "type": "string",
-                "description": "UUID of the launch set to start.",
-                "default": "127.0.0.1"
+                "description": "UUID of the launch target.",
+                "default": "00000000-1111-2222-3333-444444444444"
               },
               "timeout": {
                 "type": "number",
-                "description": "Seconds until the connection is aborted..",
-                "default": 15
+                "description": "Seconds until the connection is aborted.",
+                "default": 5
               },
               "arguments": {
                 "type": "string",
@@ -443,7 +442,17 @@
               "toolchain": {
                 "type": "string",
                 "description": "The absolute path to the toolchain (eg. C:/BitSquidBinaries/vermintide2).",
-                "toolchain": "C:/BitSquidBinaries/vermintide2"
+                "default": "C:/BitSquidBinaries/vermintide2"
+              },
+              "detach": {
+                "type": "boolean",
+                "description": "If true, the game will stay open after the debugger disconnects.",
+                "default": false
+              },
+              "compile": {
+                "type": "string",
+                "description": "NOT YET IMPLEMENTED -- If true, the game assets will be compiled before launching the game.",
+                "default": "NOT YET IMPLEMENTED"
               }
             }
           }

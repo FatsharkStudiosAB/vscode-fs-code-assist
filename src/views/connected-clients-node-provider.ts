@@ -4,7 +4,6 @@ import { connectionHandler } from '../connection-handler';
 import { StingrayConnection } from '../stingray-connection';
 
 const IDENTIFY_TIMEOUT = 5000; // Milliseconds.
-const IDENTIFY_COMMAND = "stingray_identify";
 const IDENTIFY_LUA = `
 print("[VSCode] Identifying instance...")
 local function GET(obj, method, default)

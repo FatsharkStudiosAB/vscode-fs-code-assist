@@ -3,7 +3,7 @@ import { parentPort, workerData, isMainThread, Worker } from "worker_threads";
 import { performance } from "perf_hooks";
 import { readFile } from "fs/promises";
 
-const WORKER_THREAD_COUNT = Math.min(5, Math.ceil(cpus().length / Math.PI));
+const WORKER_THREAD_COUNT = Math.min(8, Math.ceil(cpus().length/2));
 const WORKER_PATH = __filename;
 
 const OBJECT_DEFINITION_REGEX = /^\s*([A-Z][\w_]*)\s*=\s*/d;

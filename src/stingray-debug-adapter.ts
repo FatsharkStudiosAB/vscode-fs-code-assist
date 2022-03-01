@@ -83,10 +83,12 @@ type StingrayAttachRequestArguments = DebugProtocol.AttachRequestArguments & {
 
 type StingrayLaunchRequestArguments = DebugProtocol.LaunchRequestArguments & {
 	toolchain: string;
+	targetId?: string;
 	loggingEnabled?: boolean;
-	targetId: string;
 	timeout?: number;
 	arguments?: string;
+	detach?: boolean;
+	compile?: boolean;
 };
 
 const THREAD_ID = 1;
@@ -345,13 +347,16 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 			return;
 		}
 
-		const timeout = args.timeout ?? 15;
+		const timeout = args.timeout ?? 5;
+		// @TODO: Implement `compile` argument.
 
 		const child = await toolchain.launch({
 			targetId: args.targetId ?? '00000000-1111-2222-3333-444444444444',
-			arguments: `--no-compile --wait-for-debugger ${timeout} ${args.arguments}`,
+			arguments: `--no-compile ${args.arguments ?? ''}`,
 		});
-		this.child = child;
+		if (!args.detach) {
+			this.child = child;
+		}
 
 		child.on('error', () => {
 			this.killChild();
@@ -384,7 +389,12 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		rl.close();
 		child.stdout!.destroy();
 
-		this.sendResponse(response);
+		const connectResult = this.connect(toolchain, 'localhost', port);
+		connectResult.then(() => {
+			this.sendResponse(response);
+		}).catch((err) => {
+			this.sendErrorResponse(response, 1000, err.toString());
+		});
 	}
 
 	protected async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): Promise<void> {
