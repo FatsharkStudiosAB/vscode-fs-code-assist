@@ -78,7 +78,11 @@ const shortTitle = (title: string, max?: number): string => {
 };
 
 const buildLabel = (info: any, port: number): string => {
-	return info ? `${shortTitle(info.title)} (${info.console_port})` : `Stingray ${port}`;
+	if (info) {
+		const title = info.is_dedicated_server ? 'Dedicated Server' : info.title ? shortTitle(info.title) : 'Stingray';
+		return `${title} (${info.console_port})`;
+	}
+	return `Stingray ${port}`;
 };
 
 class ConnectedClientTreeItem extends vscode.TreeItem {
