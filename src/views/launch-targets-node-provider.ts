@@ -47,7 +47,7 @@ export class LaunchSetTreeItem extends vscode.TreeItem {
 			tooltip.appendMarkdown(`**Instance ${i+1}** on _${target.Name}_\n`);
 			const chunks: string[][] = [];
 			let currentChunk: string[];
-			runItem.ExtraLaunchParameters.split(/ +/).forEach((param: string) => {
+			runItem.ExtraLaunchParameters?.split(/ +/).forEach((param: string) => {
 				if (param) {
 					if (param[0] === '-') {
 						currentChunk = [];
