@@ -312,3 +312,11 @@ function VSCodeDebugAdapter(str)
 		ok = ok,
 	})
 end
+
+Application.console_send({
+	type = "vscode_debug_adapter",
+	request_id = "inject",
+	request_type = "inject",
+	result = true,
+	ok = true,
+})

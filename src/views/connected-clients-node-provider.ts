@@ -5,7 +5,7 @@ import { StingrayConnection } from '../stingray-connection';
 
 const IDENTIFY_TIMEOUT = 5000; // Milliseconds.
 const IDENTIFY_LUA = `
-print("[VSCode] Identifying instance...")
+--[[ print("[VSCode] Identifying instance...") ]]
 local function GET(obj, method, default)
 	return (function(ok, ...)
 		if ok then return ... end

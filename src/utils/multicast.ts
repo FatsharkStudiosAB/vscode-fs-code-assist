@@ -1,6 +1,6 @@
 /**
  * A Multicast provides support for one-to-many function calls.
- * This is provided since vscode.Event cannot be used from within the debug adapter.
+ * This is provided since `vscode.Event` cannot be used from within the debug adapter.
  */
 export default class Multicast {
 	private listeners: Function[] = [];
@@ -11,7 +11,6 @@ export default class Multicast {
 	 */
 	add(func: Function) {
 		this.listeners = [...this.listeners, func];
-		this.listeners.push(func);
 	};
 
 	/**

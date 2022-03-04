@@ -83,11 +83,10 @@ type StingrayAttachRequestArguments = DebugProtocol.AttachRequestArguments & {
 
 type StingrayLaunchRequestArguments = DebugProtocol.LaunchRequestArguments & {
 	toolchain: string;
-	targetId?: string;
 	loggingEnabled?: boolean;
+	targetId?: string;
 	timeout?: number;
 	arguments?: string;
-	detach?: boolean;
 	compile?: boolean;
 };
 
@@ -96,6 +95,7 @@ const THREAD_ID = 1;
 class StingrayDebugSession extends DebugAdapter.DebugSession {
 	connection?: StingrayConnection;
 	child?: ChildProcess;
+	injectedStatus: null | 'injecting' | 'done' = null;
 
 	// Breakpoints.
 	breakpoints = new Map<string, DebugProtocol.Breakpoint[]>();
@@ -124,12 +124,52 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		super();
 	}
 
+	private async ensureSnippetIsInjected() {
+		if (this.injectedStatus === 'done') {
+			return Promise.resolve(true);
+		}
+		return new Promise(async (resolve) => {
+			if (this.injectedStatus === 'injecting') {
+				const oldCb = this.callbacks.get('inject');
+				this.callbacks.set('inject', (ok) => {
+					oldCb!(ok);
+					resolve(ok);
+				});
+			} else {
+				this.injectedStatus = 'injecting';
+
+				const snippets = await readFile(path.join(__dirname, '../snippets.lua'), 'utf8');
+				this.callbacks.set('inject', (ok) => {
+					this.injectedStatus = ok ? 'done' : null;
+					resolve(ok);
+				});
+				this.connection!.sendLua(snippets);
+
+				setTimeout(() => {
+					const cb = this.callbacks.get('inject');
+					cb!(false);
+					this.callbacks.delete('inject');
+				}, 3000);
+			}
+		});
+	}
+
 	private command(type: string, args?: any): Promise<any> {
-		return new Promise((resolve) => {
+		return new Promise(async (resolve) => {
 			const request_id = uuid4();
-			const request = { ...args, request_type: type, request_id };
-			this.callbacks.set(request_id, resolve);
-			this.connection?.sendLua(`VSCodeDebugAdapter[===[${JSON.stringify(request)}]===]`);
+			if (await this.ensureSnippetIsInjected()) {
+				const request = { ...args, request_type: type, request_id };
+				this.callbacks.set(request_id, resolve);
+				this.connection!.sendLua(`VSCodeDebugAdapter[===[${JSON.stringify(request)}]===]`);
+			} else {
+				resolve({ // Dummy "failed" data.
+					type: "vscode_debug_adapter",
+					request_id,
+					request_type: type,
+					result: 'VSCodeDebugAdapter not injected',
+					ok: false,
+				});
+			}
 		});
 	}
 
@@ -190,10 +230,11 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		response.body.supportsFunctionBreakpoints = false;
 		response.body.supportsConditionalBreakpoints = false;
 		response.body.supportsHitConditionalBreakpoints = false;
+		//response.body.supportTerminateDebuggee = true;
 		response.body.exceptionBreakpointFilters = [
 			{
 				filter: "error",
-				label: "Uncaught Exception",
+				label: "Uncaught Error",
 				default: true,
 			}
 		];
@@ -293,9 +334,13 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 			});
 			connection.onDidConnect.add(async () => {
 				this.sendEvent(new DebugAdapter.OutputEvent(`Connected to ${ip}:${port}\r\n`, 'console'));
+				// In case the engine is at wait_for_script_debugger, we unblock it.
+				connection.sendJSON({ // Notify that we're connected (--wait-for-debugger).
+					type: 'boot_command',
+					message: 'script_debugger_connected',
+				});
+				// If the engine is already running, then we request a status.
 				connection.sendDebuggerCommand('report_status');
-				const snippets = await readFile(path.join(__dirname, '../snippets.lua'), 'utf8');
-				connection.sendLua(snippets);
 				this.sendEvent(new DebugAdapter.InitializedEvent());
 				this.connection = connection;
 				resolve(connection);
@@ -352,11 +397,9 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 
 		const child = await toolchain.launch({
 			targetId: args.targetId ?? '00000000-1111-2222-3333-444444444444',
-			arguments: `--no-compile ${args.arguments ?? ''}`,
+			arguments: `--no-compile --wait-for-debugger ${timeout} ${args.arguments ?? ''}`,
 		});
-		if (!args.detach) {
-			this.child = child;
-		}
+		this.child = child;
 
 		child.on('error', () => {
 			this.killChild();
@@ -422,7 +465,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		this.sendResponse(response);
 	}
 
-	public shutdown(): void {
+	public shutdown(terminateDebuggee: boolean = true): void {
 		// Ensure the debuggee is not paused.
 		this.connection?.sendDebuggerCommand('set_breakpoints', { breakpoints: {} });
 		this.connection?.sendDebuggerCommand('continue');
@@ -430,7 +473,11 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		this.connection?.close();
 		this.connection = undefined;
 
-		this.killChild();
+		if (terminateDebuggee) {
+			this.killChild();
+		} else {
+			this.child = undefined; // "Detach" it.
+		}
 	}
 
 	protected restartRequest(response: DebugProtocol.RestartResponse, args: DebugProtocol.RestartArguments): void {
@@ -438,9 +485,8 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		this.sendResponse(response);
 	}
 
-	protected disconnectRequest(response: DebugProtocol.DisconnectResponse, _args: DebugProtocol.DisconnectArguments): void {
-		this.shutdown();
-		
+	protected disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments): void {
+		this.shutdown(args.terminateDebuggee);
 		this.sendResponse(response);
 	}
 
