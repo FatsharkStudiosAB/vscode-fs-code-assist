@@ -98,7 +98,7 @@ class ConnectedClientTreeItem extends vscode.TreeItem {
 		this.command = {
 			title: 'Focus output',
 			command: 'fatshark-code-assist._focusOutput',
-			arguments: [ this ],
+			arguments: [ this.connection ],
 		};
 	}
 

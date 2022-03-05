@@ -16,6 +16,9 @@
 			"outFiles": [
 				"${workspaceFolder}/out/**/*.js",
 			],
+			"env": {
+				"FATSHARK_CODE_ASSIST_DEBUG_MODE": "1"
+			},
 			"preLaunchTask": "npm: compile"
 		},
 		{
@@ -30,6 +33,9 @@
 			"outFiles": [
 				"${workspaceFolder}/out/**/*.js"
 			],
+			"env": {
+				"FATSHARK_CODE_ASSIST_DEBUG_MODE": "1"
+			},
 			"preLaunchTask": "npm: compile"
 		},
 	],

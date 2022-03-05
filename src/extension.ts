@@ -243,7 +243,6 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 
 		const { ip, port } = connection;
-		const vscodeConfig = vscode.workspace.getConfiguration('StingrayLua');
 
 		const attachArgs = {
 			"type": "stingray_lua",
@@ -252,7 +251,7 @@ export function activate(context: vscode.ExtensionContext) {
 			"toolchain": toolchain.path,
 			"ip" : ip,
 			"port" : port,
-			"debugServer": vscodeConfig.get('debug') ? 4711 : undefined,
+			"debugServer": process.env.FATSHARK_CODE_ASSIST_DEBUG_MODE ? 4711 : undefined,
 		};
 
 		const outputChannel = connectionHandler.getOutputForConnection(connection);
@@ -286,8 +285,6 @@ export function activate(context: vscode.ExtensionContext) {
 			return;
 		}
 
-		const vscodeConfig = vscode.workspace.getConfiguration('StingrayLua');
-
 		runSet.RunItems.forEach((runItem, i) => {
 			let name = runSet.Name;
 			if (runSet.RunItems.length > 1) {
@@ -300,7 +297,7 @@ export function activate(context: vscode.ExtensionContext) {
 				"toolchain": toolchain.path,
 				"targetId": runItem.Target,
 				"arguments": runItem.ExtraLaunchParameters,
-				"debugServer": vscodeConfig.get('debug') ? 4711 : undefined,
+				"debugServer": process.env.FATSHARK_CODE_ASSIST_DEBUG_MODE ? 4711 : undefined,
 			};
 			vscode.debug.startDebugging(undefined, launchArgs);
 		});
@@ -369,7 +366,7 @@ export function activate(context: vscode.ExtensionContext) {
 		if (outputChannel) {
 			outputChannel.show();
 		} else {
-			vscode.window.showWarningMessage(`No output channel for connection at ${connection.ip}:${connection.port}`);
+			vscode.window.showWarningMessage(`No output channel for connection at ${connection?.ip}:${connection?.port}`);
 		}
 	}));
 

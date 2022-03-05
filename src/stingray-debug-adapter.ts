@@ -113,7 +113,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 	expandTableCallbacks = new Map<number, { (data: any): void }>();
 
 	// Debugging the debugger.
-	loggingEnabled = false;
+	loggingEnabled = !!process.env.FATSHARK_CODE_ASSIST_DEBUG_MODE;
 
 	// Project information.
 	projectFolderMaps = new Map<string, string>();
@@ -349,7 +349,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 	}
 
 	protected attachRequest(response: DebugProtocol.AttachResponse, args: StingrayAttachRequestArguments) {
-		this.loggingEnabled = args.loggingEnabled ?? false;
+		this.loggingEnabled = args.loggingEnabled ?? this.loggingEnabled;
 
 		let toolchain: StingrayToolchain;
 		try {
@@ -382,7 +382,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 	}
 
 	protected async launchRequest(response: DebugProtocol.LaunchResponse, args: StingrayLaunchRequestArguments) {
-		this.loggingEnabled = args.loggingEnabled ?? false;
+		this.loggingEnabled = args.loggingEnabled ?? this.loggingEnabled;
 
 		let toolchain: StingrayToolchain;
 		try {
@@ -486,7 +486,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 	}
 
 	protected disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments): void {
-		this.shutdown(args.terminateDebuggee);
+		this.shutdown(args.terminateDebuggee || false); // So it doesn't use the default.
 		this.sendResponse(response);
 	}
 
