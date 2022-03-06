@@ -7,20 +7,32 @@ enum MessageType { // Must be the same as in engine.
 	JsonWithBinary = 1,
 }
 
+/** A connection to an engine instance.
+ *
+ * The instance can be the compiler or a regular game instance.
+ */
 export class StingrayConnection {
-	private socket : Socket;
-	public isReady : boolean = false;
-	public isClosed : boolean = false;
-	public hadError : boolean = false;
-	readonly name : string;
+	/** Flag indicating if the connection is ready. */
+	public isReady: boolean = false;
+	/** Flag indicating if the connection has been closed. */
+	public isClosed: boolean = false;
+	/** Flag indicating if the connection if an error ocurred. */
+	public hadError: boolean = false;
+	/** Event triggered when the connection is established. */
 	readonly onDidConnect = new Multicast();
+	/** Event triggered when the connection is teared down */
 	readonly onDidDisconnect = new Multicast();
+	/** Event triggered when data is received. */
 	readonly onDidReceiveData = new Multicast();
 
-	constructor(readonly port: number, readonly ip: string = '127.0.0.1') {
-		this.port = port;
-		this.name = `Stingray (${this.ip}:${port})`;
+	private socket: Socket;
 
+	constructor(
+		/** Port number of the console server. */
+		readonly port: number,
+		/** IP address of the console server. */
+		readonly ip: string = '127.0.0.1'
+	) {
 		this.socket = new Socket();
 		this.socket.on('close', this._onClose.bind(this));
 		this.socket.on('ready', this._onConnect.bind(this));
@@ -32,36 +44,51 @@ export class StingrayConnection {
 		});
 	}
 
+	/** Close the connection. */
 	close() {
 		this.socket.destroy();
 	}
 
+	/** Send an engine command. */
 	sendCommand(command: string, ...args: any) {
-		let guid = utils.uuid4();
+		const guid = utils.uuid4();
 		this._send({
-			id : guid,
-			type : 'command',
-			command : command,
-			arg : [...args]
+			id: guid,
+			type: 'command',
+			command: command,
+			arg: [...args]
 		});
 		return guid;
 	}
 
+	/**
+	 * Send a debugger command.
+	 * @param command Debugger command.
+	 * @param data Extra data to send.
+	 */
 	sendDebuggerCommand(command: string, data?: any) {
 		this._send(Object.assign({
 			type: 'lua_debugger',
-			command: command
+			command,
 		}, data));
 	}
 
+	/**
+	 * Send a JSON object.
+	 * @param object Any JSON-serializable object.
+	 */
 	sendJSON(object: any) {
 		this._send(object);
 	}
 
-	sendLua(text: string) {
+	/**
+	 * Send Lua code that will be executed in the engine.
+	 * @param script Lua code to execute.
+	 */
+	sendLua(script: string) {
 		this._send({
-			type : 'script',
-			script: text
+			type: 'script',
+			script,
 		});
 	}
 

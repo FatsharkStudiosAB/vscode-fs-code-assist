@@ -7,15 +7,34 @@ import * as DebugAdapter from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { StingrayConnection } from './stingray-connection';
 import { uuid4 } from './utils/functions';
-import { StingrayToolchain } from "./utils/stingray-toolchain";
+import { StingrayToolchain } from './utils/stingray-toolchain';
+import type { EngineCallstack, FrameId, VariableRecord } from './utils/engine-types';
 
-/** Map of file paths to line numbers with breakpoints. */
-type StingrayBreakpoints = {
-	[filePath: string]: number[];
+type StingrayAttachRequestArguments = DebugProtocol.AttachRequestArguments & {
+	/** Full path to the toolchain */
+	toolchain: string;
+	/** Enable debug prints for the adapter itself. Defaults to false. */
+	loggingEnabled?: boolean;
+	/** IP address of the console server. */
+	ip: string;
+	/** Port number of the console server. */
+	port: number;
 };
 
-type RefId = number;
-type FrameId = number;
+type StingrayLaunchRequestArguments = DebugProtocol.LaunchRequestArguments & {
+	/** Full path to the toolchain */
+	toolchain: string;
+	/** Enable debug prints for the adapter itself. */
+	loggingEnabled?: boolean;
+	/** ID of the target. Defaults to localhost. */
+	targetId: string;
+	/** */
+	timeout?: number;
+	/** Extra arguments */
+	arguments?: string;
+};
+
+type RefId = number; // To document which numbers are reference
 
 const compareWith = (sortOrder: { [key:string]: number; }, a?: string, b?: string, ) => {
 	return (a && sortOrder[a] || 0) - (b && sortOrder[b] || 0);
@@ -74,23 +93,7 @@ class StingrayVariable extends DebugAdapter.Variable {
 	}
 };
 
-type StingrayAttachRequestArguments = DebugProtocol.AttachRequestArguments & {
-	toolchain: string;
-	loggingEnabled?: boolean;
-	ip: string;
-	port: number;
-};
-
-type StingrayLaunchRequestArguments = DebugProtocol.LaunchRequestArguments & {
-	toolchain: string;
-	loggingEnabled?: boolean;
-	targetId?: string;
-	timeout?: number;
-	arguments?: string;
-	compile?: boolean;
-};
-
-const THREAD_ID = 1;
+const THREAD_ID = 1; // Lua is single threaded.
 
 class StingrayDebugSession extends DebugAdapter.DebugSession {
 	connection?: StingrayConnection;
@@ -233,8 +236,8 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		//response.body.supportTerminateDebuggee = true;
 		response.body.exceptionBreakpointFilters = [
 			{
-				filter: "error",
-				label: "Uncaught Error",
+				filter: 'error',
+				label: 'Uncaught Error',
 				default: true,
 			}
 		];
@@ -544,11 +547,13 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 			this.breakpoints.set(resourcePath, adapterBreakpoints);
 
 			// Need to send all of them at once since it clears them every time new ones are sent.
-			const stingrayBreakpoints: StingrayBreakpoints = {};
-			this.breakpoints.forEach((breakpoints, resourceName) => {
-				stingrayBreakpoints[resourceName] = breakpoints.map((bp) => bp.line!);
+			const stingrayBreakpoints: { [resource: string]: number[] } = {};
+			this.breakpoints.forEach((lineNumbers, resourceName) => {
+				stingrayBreakpoints[resourceName] = lineNumbers.map((bp) => bp.line!);
 			});
-			this.connection?.sendDebuggerCommand('set_breakpoints', { breakpoints: stingrayBreakpoints });
+			this.connection?.sendDebuggerCommand('set_breakpoints', {
+				breakpoints: stingrayBreakpoints,
+			});
 		}
 	}
 
@@ -571,11 +576,11 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		this.sendResponse(response);
 	}
 
-	private expandScope(name: string, frameId: FrameId, records: EngineCallstackRecord[]): StingrayVariable {
+	private expandScope(name: string, frameId: FrameId, records: VariableRecord[]): StingrayVariable {
 		const v = new StingrayVariable(name, "n/a", (resolve) => {
 			const children: StingrayVariable[] = [];
 			records.forEach((record) => {
-				const name = record.key || record.var_name;
+				const name = (record.key || record.var_name) as string;
 				if (name === '(*temporary)') {
 					return;
 				}
@@ -595,7 +600,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		return v;
 	}
 
-	private expandValue(frameId: FrameId, record: EngineCallstackRecord, localName: string, path: number[]): StingrayVariable {
+	private expandValue(frameId: FrameId, record: VariableRecord, localName: string, path: number[]): StingrayVariable {
 		let executor;
 		if (record.type === 'table') {
 			executor = (resolve: any) => {
@@ -604,7 +609,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 					if (data.table === "nil" || data.table.length === 0) {
 						resolve([]);
 					}
-					const table = data.table as EngineCallstackRecord[];
+					const table = data.table as VariableRecord[];
 					const children = table.map((childRecord, index) => {
 						return this.expandValue(frameId, childRecord, localName, [...path, index+1]);
 					});
@@ -612,8 +617,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 					resolve(children);
 				});
 
-				/* eslint-disable @typescript-eslint/naming-convention */
-				const expandTableArg: EngineExpandTable = {
+				this.connection?.sendDebuggerCommand('expand_table', {
 					node_index: requestIndex,
 					local_num: -1, // Unused by engine.
 					table_path: {
@@ -621,13 +625,10 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 						local: localName,
 						path: path,
 					}
-				};
-				/* eslint-enable @typescript-eslint/naming-convention */
-
-				this.connection?.sendDebuggerCommand('expand_table', expandTableArg);
+				});
 			};
 		}
-		const name = record.key || record.var_name;
+		const name = (record.key || record.var_name) as string;
 		const v = new StingrayVariable(name, record.value, executor);
 		v.type = record.type;
 		v.presentationHint = {

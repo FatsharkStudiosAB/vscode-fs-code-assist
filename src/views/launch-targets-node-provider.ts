@@ -1,7 +1,7 @@
 // implements tree view UI for connected clients
 import * as vscode from 'vscode';
 import { getActiveToolchain } from '../extension';
-import type { ToolchainConfig, ToolchainConfigRunSet, ToolchainConfigTarget } from '../utils/stingray-config';
+import type { RunSet, Target, ToolchainConfig } from '../utils/stingray-config';
 
 export class LaunchTargetsNodeProvider implements vscode.TreeDataProvider<LaunchSetTreeItem> {
 	private _onDidChangeTreeData: vscode.EventEmitter<LaunchSetTreeItem | undefined | void> = new vscode.EventEmitter<LaunchSetTreeItem | undefined | void>();
@@ -31,7 +31,7 @@ export class LaunchTargetsNodeProvider implements vscode.TreeDataProvider<Launch
 
 export class LaunchSetTreeItem extends vscode.TreeItem {
 	constructor(
-		public readonly runSet: ToolchainConfigRunSet,
+		public readonly runSet: RunSet,
 		public readonly config: ToolchainConfig,
 	) {
 		super(runSet.Name, vscode.TreeItemCollapsibleState.None);
@@ -63,7 +63,7 @@ export class LaunchSetTreeItem extends vscode.TreeItem {
 		this.tooltip = tooltip;
 	}
 
-	private findTarget(targetId: string): ToolchainConfigTarget {
+	private findTarget(targetId: string): Target {
 		const target = this.config.Targets.find((target) => {
 			return target.Id === targetId;
 		});

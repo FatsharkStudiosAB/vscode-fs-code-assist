@@ -7,7 +7,7 @@ import { connectionHandler, MAX_CONNECTIONS } from './connection-handler';
 import { StingrayConnection } from './stingray-connection';
 import * as languageFeatures from './stingray-language-features';
 import { uuid4 } from './utils/functions';
-import { ToolchainConfigRunSet } from './utils/stingray-config';
+import { RunSet } from './utils/stingray-config';
 import { StingrayToolchain } from "./utils/stingray-toolchain";
 import { ConnectedClientsNodeProvider } from './views/connected-clients-node-provider';
 import { ConnectionTargetsNodeProvider, ConnectionTargetTreeItem } from './views/connection-targets-node-provider';
@@ -269,7 +269,7 @@ export function activate(context: vscode.ExtensionContext) {
 			throw new Error('No active toolchain');
 		}
 
-		let runSet: ToolchainConfigRunSet;
+		let runSet: RunSet;
 		if (element instanceof LaunchSetTreeItem) {
 			runSet = element.runSet;
 		} else if (typeof element === 'string') {
@@ -281,7 +281,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 			runSet = foundRunSet;
 		} else {
-			vscode.window.showErrorMessage(`Invald argument ${element}`);
+			vscode.window.showErrorMessage(`Invalid argument ${element}`);
 			return;
 		}
 

@@ -24,9 +24,6 @@ local function to_console_string(value)
 			or (mt and mt ~= true and mt.___is_class_metatable___ and table.find(_G, mt) or "table")
 		str = string.format("%s {…}: %p ", class, value)
 	elseif kind == "function" then
-		--local info = util.funcinfo(value)
-		--local is_file_func = (info.source and not string.find(info.source, "\n"))
-		--local where = is_file_func and string.format("%s:%s", info.source, info.linedefined) or (info.addr and string.format("0x%012x", info.addr)) or "<unknown>"
 		str = string.format("ƒ (): %p", value)
 	elseif kind == "userdata" then
 		str = tostring(value) --string.format("{%s: %p}", Script.type_name(value), value)
@@ -108,56 +105,6 @@ local function format_value(value, name, include_children, is_nested)
 		type = kind,
 		children = children, metatable = metatable,
 	}
-end
-
-local sub, gsub, format = string.sub, string.gsub, string.format
-local band, shr = bit.band, bit.rshift
-local bcnames = "ISLT  ISGE  ISLE  ISGT  ISEQV ISNEV ISEQS ISNES ISEQN ISNEN ISEQP ISNEP ISTC  ISFC  IST   ISF   ISTYPEISNUM MOV   NOT   UNM   LEN   ADDVN SUBVN MULVN DIVVN MODVN ADDNV SUBNV MULNV DIVNV MODNV ADDVV SUBVV MULVV DIVVV MODVV POW   CAT   KSTR  KCDATAKSHORTKNUM  KPRI  KNIL  UGET  USETV USETS USETN USETP UCLO  FNEW  TNEW  TDUP  GGET  GSET  TGETV TGETS TGETB TGETR TSETV TSETS TSETB TSETM TSETR CALLM CALL  CALLMTCALLT ITERC ITERN VARG  ISNEXTRETM  RET   RET0  RET1  FORI  JFORI FORL  IFORL JFORL ITERL IITERLJITERLLOOP  ILOOP JLOOP JMP   FUNCF IFUNCFJFUNCFFUNCV IFUNCVJFUNCVFUNCC FUNCCW"
-local function bcline(func, pc, ins, m)
-	if not ins then return end
-	local ma, mb, mc = band(m, 7), band(m, 15*8), band(m, 15*128)
-	local a = band(shr(ins, 8), 0xff)
-	local oidx = 6*band(ins, 0xff)
-	local op = sub(bcnames, oidx+1, oidx+6)
-	local s = format("%-6s %3s ",op, ma == 0 and "" or a)
-	local d = shr(ins, 16)
-	if mc == 13*128 then -- BCMjump
-		return format("%s=> %04d\n", s, pc+d-0x7fff)
-	end
-	if mb ~= 0 then
-		d = band(d, 0xff)
-	elseif mc == 0 then
-		return s.."\n"
-	end
-	local kc
-	if mc == 10*128 then -- BCMstr
-		kc = util.funck(func, -d-1)
-		kc = format(#kc > 40 and '"%.40s"~' or '"%s"', gsub(kc, "%c", ctlsub))
-	elseif mc == 9*128 then -- BCMnum
-		kc = util.funck(func, d)
-		if op == "TSETM " then kc = kc - 2^52 end
-	elseif mc == 12*128 then -- BCMfunc
-		local fi = util.funcinfo(util.funck(func, -d-1))
-		if fi.ffid then
-			kc = vmdef.ffnames[fi.ffid]
-		else
-			kc = fi.loc
-		end
-	elseif mc == 5*128 then -- BCMuv
-		kc = util.funcuvname(func, d)
-	end
-	if ma == 5 then -- BCMuv
-		local ka = util.funcuvname(func, a)
-		if kc then kc = ka.." ; "..kc else kc = ka end
-	end
-	if mb ~= 0 then
-		local b = shr(ins, 24)
-		if kc then return format("%s%3d %3d  ; %s\n", s, b, d, kc) end
-		return format("%s%3d %3d\n", s, b, d)
-	end
-	if kc then return format("%s%3d      ; %s\n", s, d, kc) end
-	if mc == 7*128 and d > 32767 then d = d - 65536 end -- BCMlits
-	return format("%s%3d\n", s, d)
 end
 
 local function make_environment(level)
@@ -279,24 +226,6 @@ local handlers = {
 	end,
 	expandEval = function(request)
 		return format_value(resolve_path(EVAL_REGISTRY[request.id], request.path), nil, true, true)
-	end,
-	disassemble = function(request)
-		local info = debug.getinfo(request.level+4, "fS")
-		local func = info.func
-		local bc = {}
-		for pc=1, 1000000000 do
-			local ins, m = util.funcbc(func, pc)
-			if not ins then break end
-			bc[pc] = {
-				bytes = bit.tohex(ins),
-				ins = bcline(func, pc, ins, m),
-				line = util.funcinfo(func, pc).currentline,
-			}
-		end
-		return {
-			bc = bc,
-			source = info.source or "<unknown>",
-		}
 	end,
 }
 
