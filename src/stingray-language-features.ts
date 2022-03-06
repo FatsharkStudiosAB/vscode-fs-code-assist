@@ -48,7 +48,7 @@ class StingrayLuaLanguageServer {
 	}
 
 	async parseAllLuaFiles(token?: vscode.CancellationToken) {
-		const uris = await vscode.workspace.findFiles("{foundation,scripts}/**/*.lua");
+		const uris = await vscode.workspace.findFiles("{foundation,scripts,core}/**/*.lua");
 		const indexer = new TaskRunner("parseFileSymbols", uris.map((uri) => uri.fsPath), this.pushSymbolData.bind(this));
 		token?.onCancellationRequested(() => {
 			indexer.abort();
