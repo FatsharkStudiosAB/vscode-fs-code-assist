@@ -47,6 +47,7 @@ export function activate(context: vscode.ExtensionContext) {
 	languageFeatures.activate(context);
 
 	vscode.workspace.onDidChangeWorkspaceFolders(updateIsStingrayProject);
+	vscode.workspace.onDidChangeConfiguration(updateIsStingrayProject);
 	updateIsStingrayProject();
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayReloadSources', () => {
