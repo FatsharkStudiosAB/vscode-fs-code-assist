@@ -25,7 +25,7 @@ local function to_console_string(value)
 		str = string.format("%s {…}: %p ", class, value)
 	elseif kind == "function" then
 		str = string.format("ƒ (): %p", value)
-	elseif kind == "userdata" the
+	elseif kind == "userdata" then
 		if string.format("%p", value) == "0x00004004" then
 			str = "sentinel"
 		else

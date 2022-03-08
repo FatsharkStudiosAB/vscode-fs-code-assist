@@ -347,6 +347,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 				this.sendEvent(new DebugAdapter.InitializedEvent());
 				this.connection = connection;
 				resolve(connection);
+				this.ensureSnippetIsInjected();
 			});
 		});
 	}
