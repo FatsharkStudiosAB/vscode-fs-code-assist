@@ -25,8 +25,12 @@ local function to_console_string(value)
 		str = string.format("%s {…}: %p ", class, value)
 	elseif kind == "function" then
 		str = string.format("ƒ (): %p", value)
-	elseif kind == "userdata" then
-		str = tostring(value) --string.format("{%s: %p}", Script.type_name(value), value)
+	elseif kind == "userdata" the
+		if string.format("%p", value) == "0x00004004" then
+			str = "sentinel"
+		else
+			str = tostring(value)
+		end
 	else
 		str = string.format("%s", value)
 	end
@@ -229,11 +233,12 @@ local handlers = {
 	end,
 }
 
-cjson = cjson or cjson.stingray_init()
-function VSCodeDebugAdapter(str)
+local cjson = stingray.cjson.stingray_init()
+
+local function VSCodeDebugAdapter(str)
 	local request = cjson.decode(str)
 	local ok, result = pcall(handlers[request.request_type], request)
-	Application.console_send({
+	stingray.Application.console_send({
 		type = "vscode_debug_adapter",
 		request_id = request.request_id,
 		request_type = request.request_type,
@@ -242,7 +247,9 @@ function VSCodeDebugAdapter(str)
 	})
 end
 
-Application.console_send({
+rawset(_G, "VSCodeDebugAdapter", VSCodeDebugAdapter)
+
+stingray.Application.console_send({
 	type = "vscode_debug_adapter",
 	request_id = "inject",
 	request_type = "inject",

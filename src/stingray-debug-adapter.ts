@@ -233,7 +233,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		response.body.supportsFunctionBreakpoints = false;
 		response.body.supportsConditionalBreakpoints = false;
 		response.body.supportsHitConditionalBreakpoints = false;
-		//response.body.supportTerminateDebuggee = true;
+		response.body.supportTerminateDebuggee = true;
 		response.body.exceptionBreakpointFilters = [
 			{
 				filter: 'error',
@@ -395,7 +395,7 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 			return;
 		}
 
-		const timeout = args.timeout ?? 5;
+		const timeout = args.timeout ?? 30;
 		// @TODO: Implement `compile` argument.
 
 		const child = await toolchain.launch({
