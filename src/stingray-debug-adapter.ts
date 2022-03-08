@@ -141,17 +141,23 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 			} else {
 				this.injectedStatus = 'injecting';
 
+				let timeoutId: NodeJS.Timeout;
+
 				const snippets = await readFile(path.join(__dirname, '../snippets.lua'), 'utf8');
-				this.callbacks.set('inject', (ok) => {
-					this.injectedStatus = ok ? 'done' : null;
-					resolve(ok);
+				this.callbacks.set('inject', (result) => {
+					this.injectedStatus = result?.ok ? 'done' : null;
+					resolve(result?.ok);
+					this.callbacks.delete('inject');
+					clearTimeout(timeoutId);
 				});
 				this.connection!.sendLua(snippets);
 
-				setTimeout(() => {
+				timeoutId = setTimeout(() => {
 					const cb = this.callbacks.get('inject');
-					cb!(false);
-					this.callbacks.delete('inject');
+					if (cb) {
+						cb(false);
+						this.callbacks.delete('inject');
+					};
 				}, 3000);
 			}
 		});
