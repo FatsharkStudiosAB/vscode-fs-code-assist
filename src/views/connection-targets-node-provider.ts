@@ -41,11 +41,10 @@ export class ConnectionTargetTreeItem extends vscode.TreeItem {
 		}, vscode.TreeItemCollapsibleState.None);
 		this.tooltip = new vscode.MarkdownString();
 		this.tooltip.appendCodeblock(name);
-		const recompileUri = formatCommand('fatshark-code-assist.stingrayRecompile', platform);
 		this.tooltip.appendMarkdown([
 			`---`,
 			`**Address**: \`${ip}:${port}\`  `,
-			`**Platform**: ${platform} ([Recompile](${recompileUri}))`,
+			`**Platform**: ${platform}`,
 		].join('\n'));
 		this.tooltip.isTrusted = true;
 		this.tooltip.supportThemeIcons = true;

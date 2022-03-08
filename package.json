@@ -42,7 +42,7 @@
         "command": "fatshark-code-assist.stingrayConnect",
         "title": "Connect to All",
         "category": "Stingray",
-        "icon": "$(run-all)"
+        "icon": "$(search)"
       },
       {
         "command": "fatshark-code-assist.stingrayDisconnect",
@@ -106,13 +106,13 @@
       },
       {
         "command": "fatshark-code-assist.stingrayLaunch",
-        "title": "Launch all instances",
+        "title": "Launch all Instances",
         "category": "Stingray",
         "icon": "$(run-all)"
       },
       {
         "command": "fatshark-code-assist.refreshTargets",
-        "title": "Refresh connection targets",
+        "title": "Reload Configuration",
         "category": "Stingray",
         "icon": "$(refresh)"
       }
@@ -160,6 +160,11 @@
           "command": "fatshark-code-assist.refreshTargets",
           "group": "navigation",
           "when": "view == fs-code-assist-targets"
+        },
+        {
+          "command": "fatshark-code-assist.refreshTargets",
+          "group": "navigation",
+          "when": "view == fs-code-assist-launch"
         }
       ],
       "view/item/context": [
@@ -192,12 +197,13 @@
         },
         {
           "command": "fatshark-code-assist.stingrayConnect",
-          "when": "viewItem == connection-target"
+          "when": "viewItem == connection-target",
+          "group": "inline@1"
         },
         {
           "command": "fatshark-code-assist.stingrayRecompile",
           "when": "viewItem == connection-target",
-          "group": "inline@1"
+          "group": "inline@2"
         }
       ]
     },

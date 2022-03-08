@@ -18,9 +18,28 @@ export class LaunchTargetsNodeProvider implements vscode.TreeDataProvider<Launch
 
 		const config = await toolchain.config();
 
-		let treeItems: LaunchSetTreeItem[] = config.RunSets.map((runSet) => {
-			return new LaunchSetTreeItem(runSet, config);
+		const treeItems: LaunchSetTreeItem[] = [];
+
+		config.Targets.forEach((target) => {
+			const dummyRunSet: RunSet = {
+				Id: target.Id,
+				Name: `${target.Name} [${target.Platform}]`,
+				RunItems: [
+					{
+						ExtraLaunchParameters: '',
+						Target: target.Id,
+					},
+				],
+			};
+			const treeItem = new LaunchSetTreeItem(dummyRunSet, config);
+			treeItem.iconPath = new vscode.ThemeIcon('vm');
+			treeItems.push(treeItem);
 		});
+
+		config.RunSets.forEach((runSet) => {
+			treeItems.push(new LaunchSetTreeItem(runSet, config));
+		});
+
 		return treeItems;
 	}
 

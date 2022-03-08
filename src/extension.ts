@@ -286,7 +286,7 @@ export function activate(context: vscode.ExtensionContext) {
 			return;
 		}
 
-		runSet.RunItems.forEach((runItem, i) => {
+		runSet.RunItems.forEach(async (runItem, i) => {
 			let name = runSet.Name;
 			if (runSet.RunItems.length > 1) {
 				name += ` (Instance ${i+1})`;
@@ -300,7 +300,11 @@ export function activate(context: vscode.ExtensionContext) {
 				"arguments": runItem.ExtraLaunchParameters,
 				"debugServer": process.env.FATSHARK_CODE_ASSIST_DEBUG_MODE ? 4711 : undefined,
 			};
-			vscode.debug.startDebugging(undefined, launchArgs);
+			const success = await vscode.debug.startDebugging(undefined, launchArgs);
+			if (success) {
+				vscode.commands.executeCommand("fatshark-code-assist.stingrayConnect");
+				// This might reconnect too many times, but it is relatively cheap to do so.
+			}
 		});
 	}));
 
