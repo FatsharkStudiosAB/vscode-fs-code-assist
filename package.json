@@ -3,7 +3,7 @@
   "displayName": "Fatshark Code Assist",
   "description": "Stingray Intellisense, debugging and code browsing.",
   "icon": "resources/fs-code-assist.png",
-  "version": "0.3.7",
+  "version": "0.4.0",
   "publisher": "Fatshark",
   "engines": {
     "vscode": "^1.63.0"
@@ -475,7 +475,12 @@
         "properties": {
           "platform": {
             "type": "string",
-            "enum": [ "win32", "ps4", "xb1", "xb12" ],
+            "enum": [
+              "win32",
+              "ps4",
+              "xb1",
+              "xb12"
+            ],
             "description": "Target platform to compile for.",
             "default": "win32"
           },
@@ -491,11 +496,13 @@
           },
           "watch": {
             "type": "array",
-            "items":{
+            "items": {
               "type": "string"
             },
             "description": "An optional list of filesystem patterns to watch.",
-            "default": [ "**/*.lua" ]
+            "default": [
+              "**/*.lua"
+            ]
           }
         },
         "when": "customExecutionSupported"
