@@ -464,6 +464,73 @@
           }
         }
       }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "stingray_lua",
+        "required": [
+          "platform"
+        ],
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [ "win32", "ps4", "xb1", "xb12" ],
+            "description": "Target platform to compile for."
+          },
+          "bundle": {
+            "type": "boolean",
+            "description": "If true, the result will be bundled."
+          },
+          "refresh": {
+            "type": "boolean",
+            "description": "If true, sources will be reloaded in all open game connections."
+          }
+        },
+        "when": "customExecutionSupported"
+      }
+    ],
+    "problemMatchers": [
+      {
+        "name": "stingray-build-lua-error",
+        "owner": "stingray_lua",
+        "pattern": {
+          "regexp": "([^:]+\\.lua):(\\d+): (.*)$",
+          "file": 1,
+          "message": 3,
+          "location": 2
+        }
+      },
+      {
+        "name": "stingray-build-parse-error",
+        "owner": "stingray_lua",
+        "pattern": {
+          "regexp": "Parse error in `([^`]+)`: Parse error '(.*?)' at line (\\d+):",
+          "file": 1,
+          "message": 2,
+          "location": 3
+        }
+      },
+      {
+        "name": "stingray-build-sjson-error",
+        "owner": "stingray_lua",
+        "pattern": {
+          "regexp": "([^(]+)\\((\\d+):(\\d+)\\): (.*)$",
+          "file": 1,
+          "message": 4,
+          "line": 2,
+          "column": 3
+        }
+      },
+      {
+        "name": "stingray-build-generic-error",
+        "owner": "stingray_lua",
+        "pattern": {
+          "regexp": "Error compiling `([^`]+)`: (.*)$",
+          "file": 1,
+          "message": 2,
+          "kind": "file"
+        }
+      }
     ]
   },
   "scripts": {

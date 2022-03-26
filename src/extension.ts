@@ -6,8 +6,8 @@ import * as vscode from 'vscode';
 import { connectionHandler, MAX_CONNECTIONS } from './connection-handler';
 import { StingrayConnection } from './stingray-connection';
 import * as languageFeatures from './stingray-language-features';
-import { uuid4 } from './utils/functions';
-import { RunSet } from './utils/stingray-config';
+import * as taskProvider from './stingray-task-provider';
+import { Platform, RunSet } from './utils/stingray-config';
 import { StingrayToolchain } from "./utils/stingray-toolchain";
 import { ConnectedClientsNodeProvider } from './views/connected-clients-node-provider';
 import { ConnectionTargetsNodeProvider, ConnectionTargetTreeItem } from './views/connection-targets-node-provider';
@@ -45,6 +45,7 @@ const updateIsStingrayProject = async () => {
 
 export function activate(context: vscode.ExtensionContext) {
 	languageFeatures.activate(context);
+	taskProvider.activate(context);
 
 	vscode.workspace.onDidChangeWorkspaceFolders(updateIsStingrayProject);
 	vscode.workspace.onDidChangeConfiguration(updateIsStingrayProject);
@@ -58,98 +59,23 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.setStatusBarMessage("Sources reloaded.", 3000);
 	}));
 
-	const activeCompilations = new Set<string>();
-
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayRecompile', (arg?: ConnectionTargetTreeItem | string) => {
-		let platform: string | undefined;
-		if (typeof arg === 'string') {
-			platform = arg;
-		} else if (arg instanceof ConnectionTargetTreeItem) {
-			platform = arg.platform;
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayRecompile', (item?: ConnectionTargetTreeItem) => {
+		const toolchain = getActiveToolchain();
+		if (!toolchain) {
+			vscode.window.showErrorMessage("No active toolchain!");
+			return;
 		}
 
-		if (!platform) {
+		let platform: Platform;
+		if (item) {
+			platform = item.platform;
+		} else {
 			const config = vscode.workspace.getConfiguration('StingrayLua');
-			platform = config.get('platform') ?? 'win32';
+			platform = config.get('platform') ?? "win32";
 		}
 
-		if (activeCompilations.has(platform)) {
-			return; // No.
-		}
-		activeCompilations.add(platform);
-
-		const thenable = vscode.window.withProgress({
-			location: vscode.ProgressLocation.Notification
-		}, (progress, token) => new Promise<void>(async (resolve, reject) => {
-			const toolchain = getActiveToolchain();
-			if (!toolchain) {
-				resolve();
-				return;
-			}
-
-			progress.report({ increment: 0, message: "Stingray Compile: Starting..." });
-
-			const id = uuid4();
-			let status = 0;
-
-			const compiler = connectionHandler.getCompiler();
-			function onData(data: any) {
-				if (data.id === id && data.finished) {
-					if (data.status === "success") {
-						vscode.commands.executeCommand('fatshark-code-assist.stingrayReloadSources');
-						compiler.onDidReceiveData.remove(onData);
-						resolve();
-					} else {
-						compiler.onDidReceiveData.remove(onData);
-						resolve();
-					}
-				} else if (data.type === "compile_progress") {
-					const newStatus = Math.ceil(data.i/data.count * 100);
-					const increment = newStatus - status;
-					const message = data.file || "Reticulating splines...";
-					progress.report({ increment: increment, message: "Stingray Compile: " + message });
-					status = newStatus;
-				} else if (data.type === "message" && data.system === "Compiler" && data.level === "error") {
-					vscode.window.showErrorMessage(`Compile error: ${data.message} compile id: ${id}`);
-				}
-			};
-
-			compiler.onDidReceiveData.add(onData);
-			compiler.onDidDisconnect.add(() => {
-				resolve();
-			});
-
-			token.onCancellationRequested(() => {
-				compiler.onDidReceiveData.remove(onData);
-				compiler.sendJSON({
-					"id": id,
-					"type" : "cancel",
-				});
-				resolve();
-			});
-
-			progress.report({ increment: 0, message: "Stingray Compile: Starting..." });
-
-			const config = await toolchain.config();
-			const currentProject = config.Projects[config.ProjectIndex];
-			const sourceDir = currentProject.SourceDirectory;
-			const dataDir = pathJoin(currentProject.DataDirectoryBase, platform!);
-			compiler.sendJSON({ // .replace(/\\/g, '/')
-				"id": id,
-				"type" : "compile",
-				"source-directory" : sourceDir,
-				"source-directory-maps" : [
-					{ "directory" : "core", "root" : config.SourceRepositoryPath ?? toolchain.path }
-				],
-				"data-directory" : dataDir,
-				"platform" : platform,
-			});
-		}));
-
-		thenable.then(
-			() => activeCompilations.delete(platform!), // onfulfilled
-			() => activeCompilations.delete(platform!)  // onrejected
-		);
+		const task = taskProvider.createDefaultTask(platform, toolchain);
+		vscode.tasks.executeTask(task);
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayConnect', (element?: ConnectionTargetTreeItem) => {

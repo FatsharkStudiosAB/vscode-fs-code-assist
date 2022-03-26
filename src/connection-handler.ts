@@ -30,7 +30,7 @@ export class ConnectionHandler {
 	getCompiler() {
 		if (!this._compiler || this._compiler.isClosed) {
 			this._compiler = new StingrayConnection(14032);
-			this._addOutputChannel("Stingray Compiler", this._compiler);
+			this._addOutputChannel("Stingray Compiler", this._compiler, false);
 		}
 		return this._compiler;
 	}
@@ -66,7 +66,7 @@ export class ConnectionHandler {
 		return this._connectionOutputs.get(connection);
 	}
 
-	_addOutputChannel(name:string, connection:StingrayConnection) {
+	_addOutputChannel(name:string, connection:StingrayConnection, show: boolean = true) {
 		let oldOutputChannel = this._outputsByName.get(name);
 		if (oldOutputChannel) {
 			oldOutputChannel.hide();
@@ -77,7 +77,9 @@ export class ConnectionHandler {
 		let outputChannel: vscode.OutputChannel;
 		connection.onDidConnect.add(() => {
 			outputChannel = vscode.window.createOutputChannel(name);
-			outputChannel.show();
+			if (show) {
+				outputChannel.show();
+			}
 			this._connectionOutputs.set(connection, outputChannel);
 			this._outputsByName.set(name, outputChannel);
 			vscode.commands.executeCommand("fatshark-code-assist._refreshConnectedClients");

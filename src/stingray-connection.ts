@@ -24,6 +24,8 @@ export class StingrayConnection {
 	readonly onDidDisconnect = new Multicast();
 	/** Event triggered when data is received. */
 	readonly onDidReceiveData = new Multicast();
+	/** Convenience promise for when the connection is ready. */
+	whenReady: Promise<boolean>;
 
 	private socket: Socket;
 
@@ -41,6 +43,15 @@ export class StingrayConnection {
 		this.socket.pause(); // Pull mode.
 		this._startMessagePump().finally(() => {
 			this.socket.destroy();
+		});
+		this.whenReady = new Promise((resolve) => {
+			this.onDidConnect.add(() => {
+				resolve(true);
+			});
+			this.onDidDisconnect.add(() => {
+				resolve(false);
+				this.whenReady = Promise.resolve(false);
+			});
 		});
 	}
 

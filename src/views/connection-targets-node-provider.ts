@@ -1,7 +1,7 @@
 // implements tree view UI for connected clients
 import * as vscode from 'vscode';
 import { getActiveToolchain } from '../extension';
-import { formatCommand } from '../utils/vscode';
+import { Platform } from '../utils/stingray-config';
 
 export class ConnectionTargetsNodeProvider implements vscode.TreeDataProvider<ConnectionTargetTreeItem> {
 	private _onDidChangeTreeData: vscode.EventEmitter<ConnectionTargetTreeItem | undefined | void> = new vscode.EventEmitter<ConnectionTargetTreeItem | undefined | void>();
@@ -10,7 +10,7 @@ export class ConnectionTargetsNodeProvider implements vscode.TreeDataProvider<Co
 	getTreeItem(element: ConnectionTargetTreeItem): vscode.TreeItem | Thenable<vscode.TreeItem> {
 		return element;
 	}
-	async getChildren(element?: ConnectionTargetTreeItem): Promise<ConnectionTargetTreeItem[] | undefined> {
+	async getChildren(_element?: ConnectionTargetTreeItem): Promise<ConnectionTargetTreeItem[] | undefined> {
 		const toolchain = getActiveToolchain();
 		if (!toolchain) {
 			return;
@@ -31,7 +31,7 @@ export class ConnectionTargetsNodeProvider implements vscode.TreeDataProvider<Co
 export class ConnectionTargetTreeItem extends vscode.TreeItem {
 	constructor(
 		public readonly name: string,
-		public readonly platform: string,
+		public readonly platform: Platform,
 		public readonly ip: string,
 		public readonly port: number,
 	) {

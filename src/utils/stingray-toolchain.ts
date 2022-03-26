@@ -1,4 +1,4 @@
-import { ChildProcess, exec, ExecOptions } from 'child_process';
+import { ChildProcess, exec } from 'child_process';
 import { existsSync as fileExists } from 'fs';
 import { readFile, stat } from 'fs/promises';
 import * as path from 'path';

@@ -86,9 +86,11 @@ export type Target = {
 	/** User-given name of the target. */
 	Name: string;
 	/** The platform type */
-	Platform: 'win32' | 'ps4' | 'xb1' | 'xb12';
+	Platform: Platform;
 	/** Port number of the target. */
 	Port: number;
 	/** Port at which the profiler will try to bind. */
 	ProfilerPort: number;
 };
+
+export type Platform = 'win32' | 'ps4' | 'xb1' | 'xb12';
