@@ -28,10 +28,12 @@ type StingrayLaunchRequestArguments = DebugProtocol.LaunchRequestArguments & {
 	loggingEnabled?: boolean;
 	/** ID of the target. Defaults to localhost. */
 	targetId: string;
-	/** */
+	/** Abort the launch if it takes longer than this to attach (seconds). */
 	timeout?: number;
-	/** Extra arguments */
+	/** Extra arguments. */
 	arguments?: string;
+	/** Compile in the same process before launching. */
+	compile: boolean;
 };
 
 type RefId = number; // To document which numbers are reference
@@ -403,11 +405,11 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		}
 
 		const timeout = args.timeout ?? 30;
-		// @TODO: Implement `compile` argument.
 
+		const compile = args.compile ? '--compile' : '--no-compile';
 		const child = await toolchain.launch({
 			targetId: args.targetId ?? '00000000-1111-2222-3333-444444444444',
-			arguments: `--no-compile --wait-for-debugger ${timeout} ${args.arguments ?? ''}`,
+			arguments: `${compile} --wait-for-debugger ${timeout} ${args.arguments ?? ''}`,
 		});
 		this.child = child;
 

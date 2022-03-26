@@ -74,7 +74,7 @@ export function activate(context: vscode.ExtensionContext) {
 			platform = config.get('platform') ?? "win32";
 		}
 
-		const task = taskProvider.createDefaultTask(platform, toolchain);
+		const task = taskProvider.createDefaultTask(toolchain, platform);
 		vscode.tasks.executeTask(task);
 	}));
 

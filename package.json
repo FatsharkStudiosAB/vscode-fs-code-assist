@@ -438,12 +438,13 @@
               },
               "timeout": {
                 "type": "number",
-                "description": "Seconds until the connection is aborted.",
+                "description": "Abort the launch if it takes longer than this to attach (seconds).",
                 "default": 5
               },
               "arguments": {
                 "type": "string",
-                "description": "Extra launch arguments."
+                "description": "Extra arguments.",
+                "default": ""
               },
               "toolchain": {
                 "type": "string",
@@ -456,9 +457,9 @@
                 "default": false
               },
               "compile": {
-                "type": "string",
-                "description": "NOT YET IMPLEMENTED -- If true, the game assets will be compiled before launching the game.",
-                "default": "NOT YET IMPLEMENTED"
+                "type": "boolean",
+                "description": "Compile in the same process before launching.",
+                "default": false
               }
             }
           }
@@ -475,60 +476,109 @@
           "platform": {
             "type": "string",
             "enum": [ "win32", "ps4", "xb1", "xb12" ],
-            "description": "Target platform to compile for."
+            "description": "Target platform to compile for.",
+            "default": "win32"
           },
           "bundle": {
             "type": "boolean",
-            "description": "If true, the result will be bundled."
+            "description": "If true, the result will be bundled.",
+            "default": false
           },
           "refresh": {
             "type": "boolean",
-            "description": "If true, sources will be reloaded in all open game connections."
+            "description": "If true, on a successful compile all connected game instances will be reloaded.",
+            "default": false
+          },
+          "watch": {
+            "type": "array",
+            "items":{
+              "type": "string"
+            },
+            "description": "An optional list of filesystem patterns to watch.",
+            "default": [ "**/*.lua" ]
           }
         },
         "when": "customExecutionSupported"
       }
     ],
-    "problemMatchers": [
+    "problemPatterns": [
       {
         "name": "stingray-build-lua-error",
-        "owner": "stingray_lua",
-        "pattern": {
-          "regexp": "([^:]+\\.lua):(\\d+): (.*)$",
-          "file": 1,
-          "message": 3,
-          "location": 2
-        }
+        "regexp": "([^:]+\\.lua):(\\d+): (.*)$",
+        "file": 1,
+        "message": 3,
+        "location": 2
+      },
+      {
+        "name": "stingray-build-sjson-error",
+        "regexp": "^([^(]+)\\((\\d+):(\\d+)\\): (.*)$",
+        "file": 1,
+        "message": 4,
+        "line": 2,
+        "column": 3
       },
       {
         "name": "stingray-build-parse-error",
+        "regexp": "Error compiling `([^`]+)`: Parse error '(.*?)' at line (\\d+):",
+        "file": 1,
+        "message": 2,
+        "location": 3
+      },
+      {
+        "name": "stingray-build-generic-error",
+        "regexp": "Error compiling `([^`]+)`: (.*)$",
+        "file": 1,
+        "message": 2,
+        "kind": "file"
+      }
+    ],
+    "problemMatchers": [
+      {
+        "name": "stingray_lua",
+        "pattern": ""
+      },
+      {
+        "name": "stingray-build-lua-error",
+        "label": "Stingray Lua Errors",
         "owner": "stingray_lua",
-        "pattern": {
-          "regexp": "Parse error in `([^`]+)`: Parse error '(.*?)' at line (\\d+):",
-          "file": 1,
-          "message": 2,
-          "location": 3
+        "pattern": "$stingray-build-lua-error",
+        "background": {
+          "activeOnStart": false,
+          "beginsPattern": "Compilation started",
+          "endsPattern": "Compilation finished"
         }
       },
       {
         "name": "stingray-build-sjson-error",
+        "label": "Stingray sjson Error",
         "owner": "stingray_lua",
-        "pattern": {
-          "regexp": "([^(]+)\\((\\d+):(\\d+)\\): (.*)$",
-          "file": 1,
-          "message": 4,
-          "line": 2,
-          "column": 3
+        "pattern": "$stingray-build-sjson-error",
+        "background": {
+          "activeOnStart": false,
+          "beginsPattern": "Compilation started",
+          "endsPattern": "Compilation finished"
+        }
+      },
+      {
+        "name": "stingray-build-parse-error",
+        "label": "Stingray Parse Error",
+        "owner": "stingray_lua",
+        "pattern": "$stingray-build-parse-error",
+        "background": {
+          "activeOnStart": false,
+          "beginsPattern": "Compilation started",
+          "endsPattern": "Compilation finished"
         }
       },
       {
         "name": "stingray-build-generic-error",
+        "label": "Stingray Generic Error",
         "owner": "stingray_lua",
-        "pattern": {
-          "regexp": "Error compiling `([^`]+)`: (.*)$",
-          "file": 1,
-          "message": 2,
-          "kind": "file"
+        "pattern": "$stingray-build-generic-error",
+        "background": {
+          "activeOnStart": false,
+          "beginsPattern": "Compilation started",
+          "endsPattern": "Compilation finished"
         }
       }
     ]
