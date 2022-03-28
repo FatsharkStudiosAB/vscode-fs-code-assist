@@ -541,10 +541,6 @@
     ],
     "problemMatchers": [
       {
-        "name": "stingray_lua",
-        "pattern": ""
-      },
-      {
         "name": "stingray-build-lua-error",
         "label": "Stingray Lua Errors",
         "owner": "stingray_lua",
