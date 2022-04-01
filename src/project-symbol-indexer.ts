@@ -6,8 +6,9 @@ import { readFile } from "fs/promises";
 const WORKER_THREAD_COUNT = Math.min(8, Math.ceil(cpus().length/2));
 const WORKER_PATH = __filename;
 
+const FUNCTION_SIGNATURE_REGEX = /^\s*function\s+(?:(\w+)[:.])?([\w_]+)\(([^)]*)\)/;
+const CLASS_REGEX = /\bclass\s*\(\s*"?([A-Z][\w_]*)/;
 const OBJECT_DEFINITION_REGEX = /^\s*([A-Z][\w_]*)\s*=\s*/d;
-const FUNCTION_SIGNATURE_REGEX = /^\s*function\s+(?:(\w+)[:.])?([\w_]+)\(([^)]*)\)/d;
 
 export type RawSymbolInformation = {
 	kind: "Object" | "Method" | "Class" | "Method" | "Enum",
@@ -34,7 +35,20 @@ const parseFileSymbols = async function*(path: string) {
 				parent: object,
 				path,
 				line,
-				char: (functionMatches as any).indices[2][0],
+				char: 0,
+			} as RawSymbolInformation);
+			continue;
+		}
+
+		const classMatches = CLASS_REGEX.exec(lineString);
+		if (classMatches) {
+			const [_, className] = classMatches;
+			yield ({
+				kind: "Class",
+				name: className,
+				path,
+				line,
+				char: 0,
 			} as RawSymbolInformation);
 			continue;
 		}
@@ -45,9 +59,7 @@ const parseFileSymbols = async function*(path: string) {
 			const [_, object] = objectMatches;
 			const rest = lineString.slice(indices[0][1]);
 			let kind = "Object";
-			if (rest.startsWith("class")) {
-				kind = "Class";
-			} else if (rest.startsWith("table.enum")) {
+			if (rest.startsWith("table.enum")) {
 				kind = "Enum";
 			} else if (rest.startsWith("\"")) {
 				kind = "String";
@@ -57,7 +69,7 @@ const parseFileSymbols = async function*(path: string) {
 				name: object,
 				path,
 				line,
-				char: indices[1][0],
+				char: 0,
 			} as RawSymbolInformation);
 			continue;
 		}

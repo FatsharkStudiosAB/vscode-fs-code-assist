@@ -4,7 +4,7 @@ import { connectionHandler } from "./connection-handler";
 import { getActiveToolchain } from "./extension";
 import { StingrayConnection } from "./stingray-connection";
 import { getTimestamp, uuid4 } from "./utils/functions";
-import { Platform } from "./utils/stingray-config";
+import type { Platform } from "./utils/stingray-config";
 import { StingrayToolchain } from "./utils/stingray-toolchain";
 
 // Documentation links:
@@ -131,20 +131,21 @@ class StingrayCompileTaskTerminal implements vscode.Pseudoterminal {
 			} else if (data.finished) {
 				this.write("compiler", "Compilation finished.");
 				this.compileInProgress = false;
-				if (this.definition.refresh && data.status === "success") {
-					vscode.commands.executeCommand('fatshark-code-assist.stingrayReloadSources');
+				const success = data.status === "success";
+				if (this.definition.refresh && success) {
+					vscode.commands.executeCommand('fatshark-code-assist.Connection.reloadResources');
 				}
 				if (this.fsWatchers.length > 0) {
 					this.tryStartCompile();
 					this.write("compiler", "Waiting for changes...");
 				} else {
-					this.doClose(data.status === "success" ? StatusCode.Success : StatusCode.Error);
+					this.doClose(success ? StatusCode.Success : StatusCode.Error);
 				}
 			}
 		} else if (data.type === "compile_progress") {
 			// Note: data.file is not necessarily a file.
 			const count = data.count.toString();
-			const i = data.i.toString().padStart(count.length, " ");
+			const i = (data.i + 1).toString().padStart(count.length, " ");
 			const progress = this.applyStyle(`[progress]`, "33");
 			const file = this.applyStyle(`${data.file ?? "<unknown file>"}`, "3");
 			this.write("compile_progress", `${progress} ${i} / ${count} ${file}`);
@@ -202,17 +203,14 @@ class StingrayCompileTaskTerminal implements vscode.Pseudoterminal {
 
 		const compileMessage: any = {
 			"id": this.id,
-			"type" : "compile",
-			"source-directory" : sourceDir,
-			"source-directory-maps" : [
-				{ "directory" : "core", "root" : config.SourceRepositoryPath ?? toolchain.path }
+			"type": "compile",
+			"source-directory": sourceDir,
+			"source-directory-maps": [
+				{ "directory": "core", "root" : config.SourceRepositoryPath ?? toolchain.path }
 			],
-			"data-directory" : dataDir,
-			"source-platform" : "win32",
-			"destination-platform": platform,
-			"files": [
-				"scripts/entity_system/systems/sound/sound_effect_system.lua"
-			]
+			"data-directory": dataDir,
+			"source-platform": platform,
+			"destination-platform": "win32",
 		};
 
 		if (definition.bundle) {
@@ -292,4 +290,17 @@ export const activate = (context: vscode.ExtensionContext) => {
 			);
 		},
 	}));
+};
+
+export const compileForPlatform = async (toolchain: StingrayToolchain, platform: Platform) => {
+	const task = createDefaultTask(toolchain, platform);
+	const taskExecution = await vscode.tasks.executeTask(task);
+	return new Promise<boolean>((resolve) => {
+		const disposable = vscode.tasks.onDidEndTaskProcess((taskEndEvent) => {
+			if (taskEndEvent.execution === taskExecution) {
+				disposable.dispose();
+				resolve(taskEndEvent.exitCode === StatusCode.Success);
+			}
+		});
+	});
 };

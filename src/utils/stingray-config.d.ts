@@ -64,18 +64,20 @@ export type Color = {
 	ScA: number;
 };
 
+export type RunItem = {
+	/** Parameters to provide to the engine. */
+	ExtraLaunchParameters?: string;
+	/** Target in which to launch this item. */
+	Target: string;
+};
+
 export type RunSet = {
 	/** A unique identifier, usually UUID4. */
 	Id: string;
 	/** The name of the run set. */
 	Name: string;
 	/** A list specifying the instances this set will launch.  */
-	RunItems: Array<{
-		/** Parameters to provide to the engine. */
-		ExtraLaunchParameters?: string;
-		/** Target in which to launch this item. */
-		Target: string;
-	}>;
+	RunItems: RunItem[];
 };
 
 export type Target = {

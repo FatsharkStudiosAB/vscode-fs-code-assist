@@ -42,20 +42,25 @@ class StingrayLuaLanguageServer {
 	async _ensureInitialized() {
 		if (!this._initialized) {
 			this._initialized = true;
-			await this.parseAllLuaFiles();
+			await this.parseLuaFiles();
 			await this.indexTextureFiles();
 		}
 	}
 
-	async parseAllLuaFiles(token?: vscode.CancellationToken) {
-		const uris = await vscode.workspace.findFiles("{foundation,scripts,core}/**/*.lua");
-		const indexer = new TaskRunner("parseFileSymbols", uris.map((uri) => uri.fsPath), this.pushSymbolData.bind(this));
+	async parseLuaFiles(files?: string[], token?: vscode.CancellationToken) {
+		if (!files) {
+			const uris = await vscode.workspace.findFiles("{foundation,scripts,core}/**/*.lua");
+			files = uris.map((uri) => uri.fsPath);
+		}
+		const indexer = new TaskRunner("parseFileSymbols", files, this.pushSymbolData.bind(this));
 		token?.onCancellationRequested(() => {
 			indexer.abort();
 		});
 		try {
 			const elapsed = await indexer.run();
-			vscode.window.showInformationMessage(`Indexed ${uris.length} files in ${Math.floor(elapsed)} ms using up to ${indexer.threadCount} worker threads.`);
+			if (files.length > 1) {
+				vscode.window.showInformationMessage(`Indexed ${files.length} files in ${Math.floor(elapsed)} ms using up to ${indexer.threadCount} worker threads.`);
+			}
 		} catch (e) {
 			vscode.window.showErrorMessage((e as Error).message);
 		}
@@ -70,7 +75,7 @@ class StingrayLuaLanguageServer {
 
 	onWillSaveTextDocument(event: vscode.TextDocumentWillSaveEvent) {
 		if (event.document.languageId === "lua") {
-			//this.parseLuaFile(event.document.uri);
+			this.parseLuaFiles([ event.document.uri.fsPath ]);
 		}
 	}
 }
@@ -95,13 +100,7 @@ export function activate(context: vscode.ExtensionContext) {
 		async provideWorkspaceSymbols(query) {
 			const symbols = await server.symbols();
 			query = query.toLowerCase();
-			let result: vscode.SymbolInformation[] = [];
-			for (const [key, symbolList] of symbols) {
-				if (key.toLowerCase().includes(query)) {
-					result.push(...symbolList);
-				}
-			}
-			return result;
+			return Array.from(symbols.values()).flatMap((list) => list);
 		}
 	}));
 

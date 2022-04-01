@@ -1,5 +1,3 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import { join as pathJoin } from 'path';
 import { URLSearchParams } from 'url';
 import * as vscode from 'vscode';
@@ -7,11 +5,11 @@ import { connectionHandler, MAX_CONNECTIONS } from './connection-handler';
 import { StingrayConnection } from './stingray-connection';
 import * as languageFeatures from './stingray-language-features';
 import * as taskProvider from './stingray-task-provider';
-import { Platform, RunSet } from './utils/stingray-config';
+import type { Platform, RunSet, Target } from './utils/stingray-config';
 import { StingrayToolchain } from "./utils/stingray-toolchain";
-import { ConnectedClientsNodeProvider } from './views/connected-clients-node-provider';
-import { ConnectionTargetsNodeProvider, ConnectionTargetTreeItem } from './views/connection-targets-node-provider';
-import { LaunchSetTreeItem, LaunchTargetsNodeProvider } from './views/launch-targets-node-provider';
+import { ConnectionsNodeProvider } from './views/connections-node-provider';
+import { RunSetsNodeProvider } from './views/run-sets-node-provider';
+import { TargetsNodeProvider } from './views/targets-node-provider';
 
 let _activeToolchain: StingrayToolchain;
 export const getActiveToolchain = () => {
@@ -51,166 +49,171 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.workspace.onDidChangeConfiguration(updateIsStingrayProject);
 	updateIsStingrayProject();
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayReloadSources', () => {
-		connectionHandler.getAllGames().forEach(game => {
-			game.sendCommand("refresh");
-			game.sendCommand("game", "unpause");
-		});
-		vscode.window.setStatusBarMessage("Sources reloaded.", 3000);
-	}));
+	const targetsNodeProvider = new TargetsNodeProvider();
+	vscode.window.createTreeView("fatshark-code-assist-Targets", {
+		treeDataProvider: targetsNodeProvider,
+		showCollapseAll: false,
+		canSelectMany: true,
+	});
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayRecompile', (item?: ConnectionTargetTreeItem) => {
-		const toolchain = getActiveToolchain();
-		if (!toolchain) {
-			vscode.window.showErrorMessage("No active toolchain!");
-			return;
-		}
+	// Connected clients panel
+	const connectionsNodeProvider = new ConnectionsNodeProvider();
+	vscode.window.createTreeView("fatshark-code-assist-Connections", {
+		treeDataProvider: connectionsNodeProvider,
+		showCollapseAll: false,
+		canSelectMany: true,
+	});
 
-		let platform: Platform;
-		if (item) {
-			platform = item.platform;
-		} else {
-			const config = vscode.workspace.getConfiguration('StingrayLua');
-			platform = config.get('platform') ?? "win32";
-		}
+	// Launch targets panel.
+	const runSetsNodeProvider = new RunSetsNodeProvider();
+	vscode.window.createTreeView("fatshark-code-assist-RunSets", {
+		treeDataProvider: runSetsNodeProvider,
+		showCollapseAll: false,
+		canSelectMany: true,
+	});
 
-		const task = taskProvider.createDefaultTask(toolchain, platform);
-		vscode.tasks.executeTask(task);
-	}));
-
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayConnect', (element?: ConnectionTargetTreeItem) => {
+	context.subscriptions.push(vscode.commands.registerCommand("fatshark-code-assist.Target.scan", (target?: Target) => {
 		connectionHandler.getCompiler();
-		if (element) {
-			const port = element.platform === "win32" ? 14000 : element.port;
-			const maxConnections = element.platform === "win32" ? MAX_CONNECTIONS : 1;
-			connectionHandler.connectAllGames(port, maxConnections, element.ip);
+
+		const isWin32 = target ? target.Platform === "win32" : true;
+		const port = isWin32 ? 14000 : target!.Port;
+		const maxConnections = isWin32 ? MAX_CONNECTIONS : 1;
+		connectionHandler.connectAllGames(port, maxConnections, target?.Ip);
+	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand("fatshark-code-assist.Target.compile", (target: Target) => {
+		const toolchain = getActiveToolchain()!;
+		return taskProvider.compileForPlatform(toolchain!, target.Platform);
+	}));
+
+	const connectionsForCommand = (connection: StingrayConnection, allSelected?: StingrayConnection[]): StingrayConnection[] => {
+		if (allSelected) {
+			return allSelected;
+		} else if (connection instanceof StingrayConnection) {
+			return [ connection ];
 		} else {
-			connectionHandler.connectAllGames(14000, MAX_CONNECTIONS);
+			return connectionHandler.getAllGames();
 		}
-	}));
-
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayDisconnect', (connection: StingrayConnection) => {
-		connection.close();
-	}));
-
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayDisconnectAll', () => {
-		connectionHandler.closeAll();
-	}));
-
-	let commandBoxOptions = {
-		prompt: "Enter Stingray command.",
 	};
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayCommand', () => {
-		vscode.window.showInputBox(commandBoxOptions).then( (value: string | undefined) => {
-			let commandArgs = value?.split(" ") || [];
-			if (commandArgs.length > 0) {
-				let commandType = commandArgs[0];
-				commandArgs.splice(0, 1);
-				connectionHandler.getAllGames().forEach(game => game.sendCommand(commandType, ...commandArgs));
+
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.Connection.attachDebugger', (connection: StingrayConnection, allSelected?: StingrayConnection[]) => {
+		const toolchain = getActiveToolchain()!;
+
+		connectionsForCommand(connection, allSelected).forEach((game) => {
+			const { ip, port } = game;
+
+			const attachArgs = {
+				"type": "stingray_lua",
+				"request": "attach",
+				"name": `${game.ip}:${game.port}`,
+				"toolchain": toolchain.path,
+				"ip" : ip,
+				"port" : port,
+				"debugServer": process.env.FATSHARK_CODE_ASSIST_DEBUG_MODE ? 4711 : undefined,
+			};
+
+			const outputChannel = connectionHandler.getOutputForConnection(game);
+			if (outputChannel) {
+				outputChannel.show();
+			} else {
+				connectionHandler.getGame(port, ip);
 			}
+			vscode.debug.startDebugging(undefined, attachArgs);
 		});
 	}));
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayCommandTarget', async (connection: StingrayConnection) => {
-		const value = await vscode.window.showInputBox({prompt: 'Command'}) || '';
+
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.Connection.disconnect', (connection: StingrayConnection, allSelected?: StingrayConnection[]) => {
+		connectionsForCommand(connection, allSelected).forEach((game) => {
+			game.close();
+		});
+	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand("fatshark-code-assist.Connection.executeCommand", async (connection: StingrayConnection, allSelected?: StingrayConnection[]) => {
+		const value = await vscode.window.showInputBox({prompt: "Command"}) || "";
 		const args = value.split(/\s+/);
 		const cmd = args.shift();
 		if (cmd) {
-			connection.sendCommand(cmd, ...args); // cmd is a fixed argument...
+			connectionsForCommand(connection, allSelected).forEach((game) => {
+				game.sendCommand(cmd, ...args);
+			});
 		}
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.executeLua', async (connection?: StingrayConnection) => {
-		const lua = await vscode.window.showInputBox({prompt: 'Lua script'});
-		if (!lua) {
-			return;
-		}
-
-		if (connection) {
-			connection.sendLua(lua);
-		} else {
-			connectionHandler.getAllGames().forEach((game) => game.sendLua(lua));
-		}
+	context.subscriptions.push(vscode.commands.registerCommand("fatshark-code-assist.Connection.executeLua", async (connection: StingrayConnection, allSelected?: StingrayConnection[]) => {
+		const lua = await vscode.window.showInputBox({prompt: "Lua script"}) || "";
+		connectionsForCommand(connection, allSelected).forEach((game) => {
+			game.sendLua(lua);
+		});
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.executeSelection', () => {
-		const textEditor = vscode.window.activeTextEditor;
-		if (textEditor) {
-			const selection = textEditor.selection;
-			const selectionText = textEditor.document.getText(selection);
-			connectionHandler.getAllGames().forEach(game => game.sendLua(selectionText));
-		}
-	}));
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.selectionTarget', (connection: StingrayConnection) => {
+	context.subscriptions.push(vscode.commands.registerCommand("fatshark-code-assist.Connection.executeSelection", (connection: StingrayConnection, allSelected?: StingrayConnection[]) => {
 		const textEditor = vscode.window.activeTextEditor;
 		if (textEditor) {
 			const selectionText = textEditor.document.getText(textEditor.selection);
 			if (selectionText.length > 0) {
-				connection.sendLua(selectionText);
+				connectionsForCommand(connection, allSelected).forEach((game) => {
+					game.sendLua(selectionText);
+				});
 			}
 		}
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.executeFile', () => {
+	context.subscriptions.push(vscode.commands.registerCommand("fatshark-code-assist.Connection.executeFile", (connection: StingrayConnection, allSelected?: StingrayConnection[]) => {
 		const textEditor = vscode.window.activeTextEditor;
 		if (textEditor) {
-			connectionHandler.getAllGames().forEach(game => game.sendLua(textEditor.document.getText()));
+			const script = textEditor.document.getText();
+			connectionsForCommand(connection, allSelected).forEach((game) => {
+				game.sendLua(script);
+			});
 		}
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.attachDebugger', (connection: StingrayConnection) => {
-		if (!connection) {
-			vscode.window.showErrorMessage('Command attachDebugger executed in the wrong context.');
-			return;
-		}
+	context.subscriptions.push(vscode.commands.registerCommand("fatshark-code-assist.Connection.reloadResources", (connection: StingrayConnection, allSelected?: StingrayConnection[]) => {
+		connectionsForCommand(connection, allSelected).forEach((game) => {
+			game.sendCommand("refresh");
+			game.sendCommand("game", "unpause");
+		});
+		vscode.window.setStatusBarMessage("$(refresh) Sources hot reloaded.", 3000);
+	}));
 
-		const toolchain = getActiveToolchain();
-		if (!toolchain) {
-			vscode.window.showErrorMessage('No active toolchain.');
-			return;
-		}
-
-		const { ip, port } = connection;
-
-		const attachArgs = {
-			"type": "stingray_lua",
-			"request": "attach",
-			"name": `${connection.ip}:${connection.port}`,
-			"toolchain": toolchain.path,
-			"ip" : ip,
-			"port" : port,
-			"debugServer": process.env.FATSHARK_CODE_ASSIST_DEBUG_MODE ? 4711 : undefined,
-		};
-
+	context.subscriptions.push(vscode.commands.registerCommand("fatshark-code-assist.Connection._focusOutput", (connection: StingrayConnection) => {
 		const outputChannel = connectionHandler.getOutputForConnection(connection);
 		if (outputChannel) {
 			outputChannel.show();
 		} else {
-			connectionHandler.getGame(port, ip);
+			vscode.window.showWarningMessage(`No output channel for connection at ${connection?.ip}:${connection?.port}`);
 		}
-		vscode.debug.startDebugging(undefined, attachArgs);
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.stingrayLaunch', async (element: any) => {
-		const toolchain = getActiveToolchain();
-		if (!toolchain) {
-			throw new Error('No active toolchain');
-		}
+	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.RunSet.compileAndRun', async (runSet: RunSet) => {
+		const toolchain = getActiveToolchain()!;
+		const config = await toolchain.config();
+		const platformCompilesDone = new Set<Platform>();
 
-		let runSet: RunSet;
-		if (element instanceof LaunchSetTreeItem) {
-			runSet = element.runSet;
-		} else if (typeof element === 'string') {
-			const config = await toolchain.config();
-			const foundRunSet = config.RunSets.find((runSet) => runSet.Id === element);
-			if (!foundRunSet) {
-				vscode.window.showErrorMessage(`No run set with given id found: ${element}`);
+		for (const runItem of runSet.RunItems) {
+			const target = config.Targets.find((target) => target.Id === runItem.Target);
+			const platform = target?.Platform;
+			if (!platform) {
+				vscode.window.showErrorMessage(`Invalid target in run set ${runSet.Id}`);
 				return;
 			}
-			runSet = foundRunSet;
-		} else {
-			vscode.window.showErrorMessage(`Invalid argument ${element}`);
-			return;
+
+			if (!platformCompilesDone.has(platform)) {
+				platformCompilesDone.add(platform);
+
+				const success = await taskProvider.compileForPlatform(toolchain, platform);
+				if (!success) {
+					vscode.window.showErrorMessage(`Launch: Compile failed for platform ${platform}`);
+					return;
+				}
+			}
 		}
+
+		return vscode.commands.executeCommand("fatshark-code-assist.RunSet.run", runSet);
+	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand("fatshark-code-assist.RunSet.run", async (runSet: RunSet) => {
+		const toolchain = getActiveToolchain()!;
 
 		runSet.RunItems.forEach(async (runItem, i) => {
 			let name = runSet.Name;
@@ -234,71 +237,13 @@ export function activate(context: vscode.ExtensionContext) {
 		});
 	}));
 
-	context.subscriptions.push(vscode.window.registerUriHandler({
-		handleUri(uri: vscode.Uri): vscode.ProviderResult<void> {
-			const command = uri.path.replace(/^\//, "");
-			const params = new URLSearchParams(uri.query);
-			if (command === "attach") {
-				const ip = params.get("ip") || "localhost";
-				const port = parseInt(params.get("port") || "", 10);
-				if (!ip || !port) {
-					vscode.window.showErrorMessage(`Missing ip or port arguments for /attach command.`);
-					return;
-				}
-				vscode.commands.executeCommand("fatshark-code-assist.attachDebugger", { ip, port });
-			} else if (command === "launch") {
-				const runSetId = params.get("runSetId");
-				if (!runSetId) {
-					vscode.window.showErrorMessage(`Missing runSetId arguments for /launch command.`);
-					return;
-				}
-				vscode.commands.executeCommand("fatshark-code-assist.stingrayLaunch", runSetId);
-			} else {
-				vscode.window.showErrorMessage(`Unknown command: ${command}`);
-			}
-		}
+	context.subscriptions.push(vscode.commands.registerCommand("fatshark-code-assist.flushToolcenterConfig", () => {
+		targetsNodeProvider.refresh();
+		runSetsNodeProvider.refresh();
 	}));
 
-	// connection targets
-	let connectTargetsNodeProvider = new ConnectionTargetsNodeProvider();
-	let connectTargetTreeView = vscode.window.createTreeView("fs-code-assist-targets", {
-		treeDataProvider: connectTargetsNodeProvider,
-		showCollapseAll: false,
-		canSelectMany: false
-	});
-
-	// Connected clients panel
-	let connectedClientsNodeProvider = new ConnectedClientsNodeProvider();
-	let connectedClientsTreeView = vscode.window.createTreeView("fs-code-assist-clients", {
-		treeDataProvider: connectedClientsNodeProvider,
-		showCollapseAll: false,
-		canSelectMany: true
-	});
-
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist._refreshConnectedClients', () => {
-		connectedClientsNodeProvider.refresh();
-	}));
-
-	// Launch targets panel.
-	let launchTargetsNodeProvider = new LaunchTargetsNodeProvider();
-	vscode.window.createTreeView('fs-code-assist-launch', {
-		treeDataProvider: launchTargetsNodeProvider,
-		showCollapseAll: false,
-		canSelectMany: true
-	});
-
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.refreshTargets', () => {
-		connectTargetsNodeProvider.refresh();
-		launchTargetsNodeProvider.refresh();
-	}));
-
-	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist._focusOutput', (connection: StingrayConnection) => {
-		const outputChannel = connectionHandler.getOutputForConnection(connection);
-		if (outputChannel) {
-			outputChannel.show();
-		} else {
-			vscode.window.showWarningMessage(`No output channel for connection at ${connection?.ip}:${connection?.port}`);
-		}
+	context.subscriptions.push(vscode.commands.registerCommand("fatshark-code-assist._refreshConnectedClients", () => {
+		connectionsNodeProvider.refresh();
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist._goToResource', async (loc) => {
@@ -322,6 +267,25 @@ export function activate(context: vscode.ExtensionContext) {
 				vscode.window.activeTextEditor.selection = selection;
 			} else {
 				vscode.commands.executeCommand('vscode.open', uri);
+			}
+		}
+	}));
+
+	context.subscriptions.push(vscode.window.registerUriHandler({
+		handleUri(uri: vscode.Uri): vscode.ProviderResult<void> {
+			const command = uri.path.replace(/^\//, "");
+			const params = new URLSearchParams(uri.query);
+			if (command === "attach") {
+				const ip = params.get("ip") || "localhost";
+				const port = parseInt(params.get("port") || "", 10);
+				if (!ip || !port) {
+					vscode.window.showErrorMessage(`Missing ip or port arguments for /attach command.`);
+					return;
+				}
+				const connection = connectionHandler.getGame(port, ip);
+				vscode.commands.executeCommand("fatshark-code-assist.Connection.attachDebugger", connection);
+			} else {
+				vscode.window.showErrorMessage(`Unknown command: ${command}`);
 			}
 		}
 	}));

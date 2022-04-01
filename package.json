@@ -10,7 +10,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/ManuelBlanc/vscode-vtide.git"
+    "url": "https://github.com/FatsharkStudiosAB/vscode-fs-code-assist.git"
   },
   "author": {
     "url": "http://www.fatshark.se",
@@ -25,11 +25,10 @@
     "fatshark",
     "stingray",
     "debugger",
-    "lua"
+    "lua",
+    "sjson"
   ],
   "activationEvents": [
-    "onCommand:fatshark-code-assist.stingrayConnect",
-    "onCommand:fatshark-code-assist.stingrayRecompile",
     "onUri",
     "onLanguage:lua",
     "onLanguage:sjson",
@@ -39,171 +38,182 @@
   "contributes": {
     "commands": [
       {
-        "command": "fatshark-code-assist.stingrayConnect",
-        "title": "Connect to All",
+        "command": "fatshark-code-assist.Target.scan",
+        "title": "Scan for Instances",
         "category": "Stingray",
         "icon": "$(search)"
       },
       {
-        "command": "fatshark-code-assist.stingrayDisconnect",
-        "title": "Disconnect",
-        "category": "Stingray",
-        "icon": "$(close)"
-      },
-      {
-        "command": "fatshark-code-assist.stingrayDisconnectAll",
-        "title": "Disconnect All",
-        "category": "Stingray",
-        "icon": "$(close-all)"
-      },
-      {
-        "command": "fatshark-code-assist.stingrayRecompile",
-        "title": "Recompile and Reload Sources",
+        "command": "fatshark-code-assist.Target.compile",
+        "title": "Compile Content",
         "category": "Stingray",
         "icon": "$(server-environment)"
       },
       {
-        "command": "fatshark-code-assist.stingrayReloadSources",
-        "title": "Reload Sources",
-        "category": "Stingray",
-        "icon": "$(repo-sync)"
-      },
-      {
-        "command": "fatshark-code-assist.executeLua",
-        "title": "Execute Lua",
-        "category": "Stingray"
-      },
-      {
-        "command": "fatshark-code-assist.executeSelection",
-        "title": "Execute Selection",
-        "category": "Stingray"
-      },
-      {
-        "command": "fatshark-code-assist.executeFile",
-        "title": "Execute File",
-        "category": "Stingray"
-      },
-      {
-        "command": "fatshark-code-assist.stingrayCommand",
-        "title": "Command",
-        "category": "Stingray"
-      },
-      {
-        "command": "fatshark-code-assist.stingrayCommandTarget",
-        "title": "Execute Command on Target",
-        "category": "Stingray"
-      },
-      {
-        "command": "fatshark-code-assist.selectionTarget",
-        "title": "Execute Selection on Target",
-        "category": "Stingray"
-      },
-      {
-        "command": "fatshark-code-assist.attachDebugger",
+        "command": "fatshark-code-assist.Connection.attachDebugger",
         "title": "Attach Debugger",
         "category": "Stingray",
         "icon": "$(debug-alt)"
       },
       {
-        "command": "fatshark-code-assist.stingrayLaunch",
-        "title": "Launch all Instances",
+        "command": "fatshark-code-assist.Connection.disconnect",
+        "title": "Disconnect",
+        "category": "Stingray",
+        "icon": "$(close)"
+      },
+      {
+        "command": "fatshark-code-assist.Connection.executeCommand",
+        "title": "Execute Command",
+        "category": "Stingray"
+      },
+      {
+        "command": "fatshark-code-assist.Connection.executeLua",
+        "title": "Execute Lua",
+        "category": "Stingray"
+      },
+      {
+        "command": "fatshark-code-assist.Connection.executeSelection",
+        "title": "Execute Selection",
+        "category": "Stingray"
+      },
+      {
+        "command": "fatshark-code-assist.Connection.executeFile",
+        "title": "Execute File",
+        "category": "Stingray"
+      },
+      {
+        "command": "fatshark-code-assist.Connection.reloadResources",
+        "title": "Refresh Modified Resources",
+        "category": "Stingray",
+        "icon": "$(extensions-refresh)"
+      },
+      {
+        "command": "fatshark-code-assist.RunSet.compileAndRun",
+        "title": "Compile and Launch Run Set",
         "category": "Stingray",
         "icon": "$(run-all)"
       },
       {
-        "command": "fatshark-code-assist.refreshTargets",
-        "title": "Reload Configuration",
+        "command": "fatshark-code-assist.RunSet.run",
+        "title": "Launch Run Set",
         "category": "Stingray",
-        "icon": "$(refresh)"
+        "icon": "$(run)"
+      },
+      {
+        "command": "fatshark-code-assist.flushToolcenterConfig",
+        "title": "Sync Toolcenter Config",
+        "category": "Stingray",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "fatshark-code-assist.disconnectAll",
+        "title": "Disconnect from All",
+        "category": "Stingray",
+        "icon": "$(close-all)"
       }
     ],
     "menus": {
       "commandPalette": [
         {
-          "command": "fatshark-code-assist.stingrayCommandTarget",
+          "command": "fatshark-code-assist.Target.scan",
           "when": "false"
         },
         {
-          "command": "fatshark-code-assist.executeSelection",
+          "command": "fatshark-code-assist.Target.compile",
           "when": "false"
         },
         {
-          "command": "fatshark-code-assist.selectionTarget",
+          "command": "fatshark-code-assist.Connection.attachDebugger",
           "when": "false"
         },
         {
-          "command": "fatshark-code-assist.stingrayLaunch",
+          "command": "fatshark-code-assist.Connection.disconnect",
           "when": "false"
         },
         {
-          "command": "fatshark-code-assist.attachDebugger",
+          "command": "fatshark-code-assist.RunSet.compileAndRun",
           "when": "false"
         },
         {
-          "command": "fatshark-code-assist.refreshTargets",
-          "when": "false"
-        },
-        {
-          "command": "fatshark-code-assist.stingrayDisconnect",
+          "command": "fatshark-code-assist.RunSet.run",
           "when": "false"
         }
       ],
       "editor/context": [
         {
-          "command": "fatshark-code-assist.executeSelection",
+          "command": "fatshark-code-assist.Connection.executeSelection",
           "group": "Stingray",
           "when": "editorHasSelection"
         }
       ],
       "view/title": [
         {
-          "command": "fatshark-code-assist.refreshTargets",
+          "command": "fatshark-code-assist.flushToolcenterConfig",
           "group": "navigation",
-          "when": "view == fs-code-assist-targets"
+          "when": "view == fatshark-code-assist-Targets"
         },
         {
-          "command": "fatshark-code-assist.refreshTargets",
+          "command": "fatshark-code-assist.Connection.reloadResources",
+          "when": "view == fatshark-code-assist-Connections",
+          "group": "navigation@1"
+        },
+        {
+          "command": "fatshark-code-assist.Connection.disconnect",
+          "when": "view == fatshark-code-assist-Connections",
+          "group": "navigation@2"
+        },
+        {
+          "command": "fatshark-code-assist.flushToolcenterConfig",
           "group": "navigation",
-          "when": "view == fs-code-assist-launch"
+          "when": "view == fatshark-code-assist-RunSets"
         }
       ],
       "view/item/context": [
         {
-          "command": "fatshark-code-assist.attachDebugger",
-          "when": "viewItem == connected-client",
+          "command": "fatshark-code-assist.Target.scan",
+          "when": "viewItem == target",
           "group": "inline@1"
         },
         {
-          "command": "fatshark-code-assist.stingrayDisconnect",
-          "when": "viewItem == connected-client",
+          "command": "fatshark-code-assist.Target.compile",
+          "when": "viewItem == target",
           "group": "inline@2"
         },
         {
-          "command": "fatshark-code-assist.stingrayCommandTarget",
-          "when": "viewItem == connected-client"
-        },
-        {
-          "command": "fatshark-code-assist.executeLua",
-          "when": "viewItem == connected-client"
-        },
-        {
-          "command": "fatshark-code-assist.selectionTarget",
-          "when": "viewItem == connected-client"
-        },
-        {
-          "command": "fatshark-code-assist.stingrayLaunch",
-          "when": "viewItem == launch-set",
+          "command": "fatshark-code-assist.Connection.attachDebugger",
+          "when": "viewItem == connection",
           "group": "inline@1"
         },
         {
-          "command": "fatshark-code-assist.stingrayConnect",
-          "when": "viewItem == connection-target",
-          "group": "inline@1"
-        },
-        {
-          "command": "fatshark-code-assist.stingrayRecompile",
-          "when": "viewItem == connection-target",
+          "command": "fatshark-code-assist.Connection.disconnect",
+          "when": "viewItem == connection",
           "group": "inline@2"
+        },
+        {
+          "command": "fatshark-code-assist.Connection.executeCommand",
+          "when": "viewItem == connection"
+        },
+        {
+          "command": "fatshark-code-assist.Connection.executeLua",
+          "when": "viewItem == connection"
+        },
+        {
+          "command": "fatshark-code-assist.Connection.executeSelection",
+          "when": "viewItem == connection"
+        },
+        {
+          "command": "fatshark-code-assist.Connection.executeFile",
+          "when": "viewItem == connection"
+        },
+        {
+          "command": "fatshark-code-assist.Connection.reloadResources",
+          "when": "viewItem == connection"
+        },
+        {
+          "command": "fatshark-code-assist.RunSet.compileAndRun",
+          "when": "viewItem == run-set",
+          "group": "inline@1",
+          "alt": "fatshark-code-assist.RunSet.run"
         }
       ]
     },
@@ -338,7 +348,7 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "fs-code-assist",
+          "id": "fatshark-code-assist",
           "title": "FS Code Assist",
           "icon": "resources/fs-code-assist.svg",
           "when": "fatshark-code-assist:isStingrayProject"
@@ -346,24 +356,31 @@
       ]
     },
     "views": {
-      "fs-code-assist": [
+      "fatshark-code-assist": [
         {
-          "id": "fs-code-assist-targets",
-          "name": "Connection Targets",
+          "id": "fatshark-code-assist-Targets",
+          "name": "Targets",
           "when": "fatshark-code-assist:isStingrayProject"
         },
         {
-          "id": "fs-code-assist-clients",
-          "name": "Connected Clients",
+          "id": "fatshark-code-assist-Connections",
+          "name": "Connections",
           "when": "fatshark-code-assist:isStingrayProject"
         },
         {
-          "id": "fs-code-assist-launch",
-          "name": "Launch Configurations",
+          "id": "fatshark-code-assist-RunSets",
+          "name": "Run Sets",
           "when": "fatshark-code-assist:isStingrayProject"
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "fatshark-code-assist-Connections",
+        "contents": "[Scan for instances on localhost](command:fatshark-code-assist.Target.scan)",
+        "when": "editorIsOpen"
+      }
+    ],
     "breakpoints": [
       {
         "language": "lua"
