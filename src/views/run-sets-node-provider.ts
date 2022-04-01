@@ -18,7 +18,9 @@ const buildTooltip = (config: ToolchainConfig, runSet: RunSet) => {
 				currentChunk = [];
 				chunks.push(currentChunk);
 			}
-			currentChunk.push("`"+param+"`");
+			if (param !== "") {
+				currentChunk.push("`"+param+"`");
+			}
 		});
 		for (const chunk of chunks) {
 			tooltip.appendMarkdown(`${chunk.join(" ")}  \n`);

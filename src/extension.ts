@@ -41,7 +41,7 @@ const updateIsStingrayProject = async () => {
 	vscode.commands.executeCommand('setContext', 'fatshark-code-assist:isStingrayProject', bool);
 };
 
-export function activate(context: vscode.ExtensionContext) {
+export const activate = (context: vscode.ExtensionContext) => {
 	languageFeatures.activate(context);
 	taskProvider.activate(context);
 
@@ -50,27 +50,27 @@ export function activate(context: vscode.ExtensionContext) {
 	updateIsStingrayProject();
 
 	const targetsNodeProvider = new TargetsNodeProvider();
-	vscode.window.createTreeView("fatshark-code-assist-Targets", {
+	context.subscriptions.push(vscode.window.createTreeView("fatshark-code-assist-Targets", {
 		treeDataProvider: targetsNodeProvider,
 		showCollapseAll: false,
 		canSelectMany: true,
-	});
+	}));
 
 	// Connected clients panel
 	const connectionsNodeProvider = new ConnectionsNodeProvider();
-	vscode.window.createTreeView("fatshark-code-assist-Connections", {
+	context.subscriptions.push(vscode.window.createTreeView("fatshark-code-assist-Connections", {
 		treeDataProvider: connectionsNodeProvider,
 		showCollapseAll: false,
 		canSelectMany: true,
-	});
+	}));
 
 	// Launch targets panel.
 	const runSetsNodeProvider = new RunSetsNodeProvider();
-	vscode.window.createTreeView("fatshark-code-assist-RunSets", {
+	context.subscriptions.push(vscode.window.createTreeView("fatshark-code-assist-RunSets", {
 		treeDataProvider: runSetsNodeProvider,
 		showCollapseAll: false,
 		canSelectMany: true,
-	});
+	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand("fatshark-code-assist.Target.scan", (target?: Target) => {
 		connectionHandler.getCompiler();
@@ -120,6 +120,15 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 			vscode.debug.startDebugging(undefined, attachArgs);
 		});
+	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand("fatshark-code-assist.Connection.openProfiler", async (connection: StingrayConnection) => {
+		const info = await connectionHandler.identify(connection);
+		if (info) {
+			vscode.env.openExternal(vscode.Uri.parse(`http://localhost:${info.profiler_port}/`));
+		} else {
+			vscode.window.showErrorMessage(`Could not open profiler for instance.`);
+		}
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('fatshark-code-assist.Connection.disconnect', (connection: StingrayConnection, allSelected?: StingrayConnection[]) => {
@@ -271,6 +280,42 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}));
 
+	context.subscriptions.push(vscode.commands.registerCommand("fatshark-code-assist._openDocumentation", async (info: { object: string, method: string }) => {
+		const toolchain = getActiveToolchain()!;
+		const { object, method } = info;
+		let uriString = `file:///${toolchain.path.replace(/\\/g, "/")}/lua_HTML/obj_stingray_${object}.html`;
+		// The fragment is removed when opened in Firefox.
+		//if (method) {
+		//	uriString += `#sig_stingray_${object}_${method.replace(/_/g, "__")}`;
+		//}
+		const uri = vscode.Uri.file(uriString);
+		vscode.env.openExternal(uri);
+
+		// Testing showing docs inside the editor, very buggy.
+		//const basePath = "C:/BitSquidBinaries/vermintide2/lua_HTML";
+		//const { object, method } = info;
+		//const path = pathJoin(basePath, `obj_stingray_${object}.html`);
+		//const html = await readFile(path, { encoding: 'utf8' });
+		//const panel = vscode.window.createWebviewPanel(
+		//	'stingrayDocs',
+		//	'Stingray Documentation',
+		//	vscode.ViewColumn.One,
+		//	{
+		//		enableScripts: true,
+		//		localResourceRoots: [ vscode.Uri.file(basePath) ],
+		//	},
+		//);
+		//panel.webview.html = html.replace(/((?:src|href)=['"])(.*?)(['"])/gi, (_, pre, uri, post) => {
+		//	if (uri.startsWith("#") || uri.startsWith("http") || uri.startsWith("javascript") ) {
+		//		uri = "";
+		//	}
+		//	const onDiskPath = vscode.Uri.file(pathJoin(basePath, uri));
+		//	const webviewUri = panel.webview.asWebviewUri(onDiskPath).toString();
+		//	return `${pre}${webviewUri}${post}`;
+		//});
+		//panel.reveal();
+	}));
+
 	context.subscriptions.push(vscode.window.registerUriHandler({
 		handleUri(uri: vscode.Uri): vscode.ProviderResult<void> {
 			const command = uri.path.replace(/^\//, "");
@@ -289,8 +334,8 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		}
 	}));
-}
+};
 
-export function deactivate() {
+export const deactivate = () => {
 	connectionHandler.closeAll();
-}
+};

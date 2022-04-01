@@ -8,17 +8,45 @@ import { getTimestamp } from './utils/functions';
 
 export const MAX_CONNECTIONS = 4;
 
-export class ConnectionHandler {
-	_compiler?: StingrayConnection;
-	_game: Map<number, StingrayConnection>;
-	_connectionOutputs: Map<StingrayConnection, vscode.OutputChannel>;
-	_outputsByName: Map<string, vscode.OutputChannel>;
+const IDENTIFY_TIMEOUT = 5000; // Milliseconds.
+const IDENTIFY_LUA = `
+--[[ print("[VSCode] Identifying instance...") ]]
+local function GET(obj, method, default)
+	return (function(ok, ...)
+		if ok then return ... end
+		return default
+	end)(pcall(obj and obj[method]))
+end
+stingray.Application.console_send({
+	type = "stingray_identify",
+	info = {
+		--[[ sysinfo = Application.sysinfo(), Too long! ]]
+		argv = { GET(Application, "argv", "#ERROR!") },
+		build = GET(Application, "build", BUILD),
+		build_identifier = GET(Application, "build_identifier", BUILD_IDENTIFIER),
+		bundled = GET(Application, "bundled"),
+		console_port = GET(Application, "console_port"),
+		profiler_port = GET(Application, "profiler_port"),
+		is_dedicated_server = GET(Application, "is_dedicated_server"),
+		machine_id = GET(Application, "machine_id"),
+		platform = GET(Application, "platform", PLATFORM),
+		plugins = GET(Application, "all_plugin_names"),
+		process_id = GET(Application, "process_id"),
+		session_id = GET(Application, "session_id"),
+		source_platform = GET(Application, "source_platform"),
+		time_since_launch = GET(Application, "time_since_launch"),
+		title = GET(Window, "title", "Stingray"),
+		jit = { GET(jit, "status") } ,
+	},
+})
+`;
 
-	constructor(){
-		this._game = new Map();
-		this._connectionOutputs = new Map();
-		this._outputsByName = new Map();
-	}
+export class ConnectionHandler {
+	private _compiler?: StingrayConnection;
+	private _game = new Map<number, StingrayConnection>();
+	private _connectionOutputs = new Map<StingrayConnection, vscode.OutputChannel>();
+	private _identifyInfo = new Map<StingrayConnection, any>();
+	private _outputsByName = new Map<string, vscode.OutputChannel>();
 
 	closeAll() {
 		this._compiler?.close();
@@ -84,8 +112,9 @@ export class ConnectionHandler {
 			this._outputsByName.set(name, outputChannel);
 			vscode.commands.executeCommand("fatshark-code-assist._refreshConnectedClients");
 		});
-		connection.onDidDisconnect.add((hadError:boolean) => {
+		connection.onDidDisconnect.add((hadError: boolean) => {
 			this._connectionOutputs.delete(connection);
+			this._identifyInfo.delete(connection);
 			vscode.commands.executeCommand("fatshark-code-assist._refreshConnectedClients");
 		});
 		connection.onDidReceiveData.add((data:any) => {
@@ -99,6 +128,34 @@ export class ConnectionHandler {
 			if (data.message_type === "lua_error") { // If it is an error, print extra diagnostics.
 				outputChannel.appendLine(data.lua_callstack);
 			}
+		});
+	}
+
+	async identify(connection: StingrayConnection): Promise<any | null> {
+		const info = this._identifyInfo.get(connection);
+		if (info) {
+			return info;
+		}
+
+		let onData: (data: any) => void;
+		let timeoutId: NodeJS.Timeout;
+
+		const identifyResult = new Promise<any>(async (resolve) => {
+			connection.onDidReceiveData.add(onData = (data: any) => {
+				if (data.type === "stingray_identify") {
+					resolve(data.info);
+				}
+			});
+			timeoutId = setTimeout(resolve, IDENTIFY_TIMEOUT, null);
+		});
+
+		connection.sendLua(IDENTIFY_LUA);
+
+		return identifyResult.then((info) => {
+			this._identifyInfo.set(connection, info);
+		}).finally(() => {
+			connection.onDidReceiveData.remove(onData);
+			clearTimeout(timeoutId);
 		});
 	}
 }

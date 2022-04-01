@@ -29,6 +29,12 @@
     "sjson"
   ],
   "activationEvents": [
+    "onCommand:fatshark-code-assist.Target.scan",
+    "onCommand:fatshark-code-assist.Target.compile",
+    "onCommand:fatshark-code-assist.Connection.attachDebugger",
+    "onCommand:fatshark-code-assist.RunSet.run",
+    "onCommand:fatshark-code-assist.RunSet.compileAndRun",
+    "workspaceContains:settings.ini",
     "onUri",
     "onLanguage:lua",
     "onLanguage:sjson",
@@ -54,6 +60,12 @@
         "title": "Attach Debugger",
         "category": "Stingray",
         "icon": "$(debug-alt)"
+      },
+      {
+        "command": "fatshark-code-assist.Connection.openProfiler",
+        "title": "Open Profiler",
+        "category": "Stingray",
+        "icon": "$(symbol-unit)"
       },
       {
         "command": "fatshark-code-assist.Connection.disconnect",
@@ -104,12 +116,6 @@
         "title": "Sync Toolcenter Config",
         "category": "Stingray",
         "icon": "$(cloud-download)"
-      },
-      {
-        "command": "fatshark-code-assist.disconnectAll",
-        "title": "Disconnect from All",
-        "category": "Stingray",
-        "icon": "$(close-all)"
       }
     ],
     "menus": {
@@ -123,11 +129,7 @@
           "when": "false"
         },
         {
-          "command": "fatshark-code-assist.Connection.attachDebugger",
-          "when": "false"
-        },
-        {
-          "command": "fatshark-code-assist.Connection.disconnect",
+          "command": "fatshark-code-assist.Connection.openProfiler",
           "when": "false"
         },
         {
@@ -158,11 +160,6 @@
           "group": "navigation@1"
         },
         {
-          "command": "fatshark-code-assist.Connection.disconnect",
-          "when": "view == fatshark-code-assist-Connections",
-          "group": "navigation@2"
-        },
-        {
           "command": "fatshark-code-assist.flushToolcenterConfig",
           "group": "navigation",
           "when": "view == fatshark-code-assist-RunSets"
@@ -185,9 +182,14 @@
           "group": "inline@1"
         },
         {
-          "command": "fatshark-code-assist.Connection.disconnect",
+          "command": "fatshark-code-assist.Connection.openProfiler",
           "when": "viewItem == connection",
           "group": "inline@2"
+        },
+        {
+          "command": "fatshark-code-assist.Connection.disconnect",
+          "when": "viewItem == connection",
+          "group": "inline@3"
         },
         {
           "command": "fatshark-code-assist.Connection.executeCommand",

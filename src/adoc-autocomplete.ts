@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { getActiveToolchain } from './extension';
+import { formatCommand } from './utils/vscode';
 
 type AdocType = "namespace" | "function" | "constant" | "object" | "enumeration" | "enumerator";
 
@@ -226,6 +227,16 @@ class AdocCompletionFeatures implements
 			if (info.desc) {
 				mdString.appendMarkdown('\n\n---\n\n' + info.desc);
 			}
+		}
+
+		const dotIndex = expression.indexOf(".");
+		if (dotIndex > -1) {
+			const object = expression.substring(0, dotIndex);
+			const method = expression.substring(dotIndex+1);
+			const command = formatCommand("fatshark-code-assist._openDocumentation", { object, method });
+			mdString.appendMarkdown(`\n\n\n[$(link-external) Open local documentation](${command})`);
+			mdString.supportThemeIcons = true;
+			mdString.isTrusted = true;
 		}
 
 		return new vscode.Hover(mdString);
