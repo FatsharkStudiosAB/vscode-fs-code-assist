@@ -8,6 +8,10 @@ local function ctlsub(c)
 	end
 end
 
+local function pack_pcall(ok, ...)
+	return ok, { ... }, select("#", ...)
+end
+
 local util = require("jit.util")
 local function to_console_string(value)
 	local kind = type(value)
@@ -20,9 +24,17 @@ local function to_console_string(value)
 		end
 	elseif kind == "table" then
 		local mt = getmetatable(value)
-		local class = rawget(value, "___is_class_metatable___") and "class"
-			or (mt and mt ~= true and mt.___is_class_metatable___ and table.find(_G, mt) or "table")
-		str = string.format("%s {…}: %p ", class, value)
+		local table_kind
+		if type(mt) == "table" then
+			if mt.___is_class_metatable___ then
+				table_kind = table.find(CLASS_LOOKUP, mt)
+			else
+				table_kind = mt.__class_name
+			end
+		elseif rawget(value, "___is_class_metatable___") or rawget(value, "__class_name") then
+			table_kind = "class"
+		end
+		str = string.format("%s {…}: %p ", table_kind or "table", value)
 	elseif kind == "function" then
 		str = string.format("ƒ (): %p", value)
 	elseif kind == "userdata" then
@@ -166,6 +178,7 @@ local function make_environment(level)
 	})
 end
 
+local EVAL_COUNT = 0 -- Number of evaluated expressions.
 local EVAL_REGISTRY = {}
 
 local handlers = {
@@ -211,21 +224,42 @@ local handlers = {
 	eval = function(request)
 		-- If a stack level is provided, we have to adjust it skipping all the
 		-- debug stuff that is currently on the stack. This is *very* brittle.
-		local id = #EVAL_REGISTRY+1
-		local eval_name = string.format("eval#%d", id)
+		EVAL_COUNT = EVAL_COUNT + 1
+		local eval_name = string.format("eval#%d", EVAL_COUNT)
 		local thunk = loadstring("return ("..request.expression..")", eval_name)
 		if not thunk then
-			thunk = assert(loadstring(request.expression, eval_name))
+			local err
+			thunk, err = loadstring(request.expression, eval_name)
+			if not thunk then
+				return nil, err
+			end
 		end
 		local environment = request.level and make_environment(request.level + (3+2)) or _G
 		setfenv(thunk, environment)
-		local result = thunk()
 		local completion = request.completion
-		local response = format_value(result, eval_name, completion)
-		if not completion then
-			EVAL_REGISTRY[id] = result
-			response.id = id
+		local ok, results, num_results = pack_pcall(pcall(thunk))
+		if not ok then
+			return nil, results[1]
 		end
+		local response
+		if completion or num_results <= 1 then
+			response = format_value(results[1], eval_name, true)
+		else
+			local value_buffer = {}
+			local children = {}
+			for i=1, num_results do
+				children[i] = format_value(results[i], "result#"..i)
+				value_buffer[i] = children[i].value
+			end
+			response = {
+				name = eval_name,
+				value = table.concat(value_buffer, ", "),
+				type = "table",
+				children = children,
+			}
+		end
+		response.id = #EVAL_REGISTRY+1
+		EVAL_REGISTRY[response.id] = response
 		return response
 	end,
 	expandEval = function(request)
@@ -237,7 +271,10 @@ local cjson = stingray.cjson.stingray_init()
 
 local function VSCodeDebugAdapter(str)
 	local request = cjson.decode(str)
-	local ok, result = pcall(handlers[request.request_type], request)
+	local ok, result, force_error = pcall(handlers[request.request_type], request)
+	if force_error then
+		ok, result = nil, force_error
+	end
 	stingray.Application.console_send({
 		type = "vscode_debug_adapter",
 		request_id = request.request_id,

@@ -1,4 +1,4 @@
-import { join as pathJoin } from 'path';
+import { join as pathJoin, relative as pathRelative } from 'path';
 import { URLSearchParams } from 'url';
 import * as vscode from 'vscode';
 import { connectionHandler, MAX_CONNECTIONS } from './connection-handler';
@@ -48,6 +48,30 @@ export const activate = (context: vscode.ExtensionContext) => {
 	vscode.workspace.onDidChangeWorkspaceFolders(updateIsStingrayProject);
 	vscode.workspace.onDidChangeConfiguration(updateIsStingrayProject);
 	updateIsStingrayProject();
+
+	vscode.debug.onDidStartDebugSession(async (debugSession) => {
+		if (debugSession.type !== "stingray_lua") {
+			return;
+		}
+		const toolchain = getActiveToolchain();
+		const path = debugSession.configuration.toolchain;
+		if (!toolchain || !path) {
+			return;
+		}
+		const rel = pathRelative(toolchain.path, path);
+		if (rel !== "") { // Robust check for path equality.
+			return;
+		}
+		const config = await toolchain.config();
+		const targetId = debugSession.configuration.targetId;
+		const target = config.Targets.find((target) => target.Id === targetId);
+		if (target) {
+			// Insert a delay to give time for the game to be ready and set the title.
+			setTimeout(() => {
+				vscode.commands.executeCommand("fatshark-code-assist.Target.scan", target);
+			}, 200);
+		}
+	});
 
 	const targetsNodeProvider = new TargetsNodeProvider();
 	context.subscriptions.push(vscode.window.createTreeView("fatshark-code-assist-Targets", {
@@ -185,7 +209,9 @@ export const activate = (context: vscode.ExtensionContext) => {
 		vscode.window.setStatusBarMessage("$(refresh) Sources hot reloaded.", 3000);
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand("fatshark-code-assist.Connection._focusOutput", (connection: StingrayConnection) => {
+	context.subscriptions.push(vscode.commands.registerCommand("fatshark-code-assist.Connection._onSelected", (connection: StingrayConnection) => {
+		connectionHandler.identify(connection, true);
+		connectionsNodeProvider.refresh();
 		const outputChannel = connectionHandler.getOutputForConnection(connection);
 		if (outputChannel) {
 			outputChannel.show();
@@ -240,8 +266,8 @@ export const activate = (context: vscode.ExtensionContext) => {
 			};
 			const success = await vscode.debug.startDebugging(undefined, launchArgs);
 			if (success) {
-				vscode.commands.executeCommand("fatshark-code-assist.stingrayConnect");
-				// This might reconnect too many times, but it is relatively cheap to do so.
+				// Opening the output is handled elsewhere.
+				// Warn here?
 			}
 		});
 	}));

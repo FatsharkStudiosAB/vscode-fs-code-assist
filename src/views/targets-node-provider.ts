@@ -20,7 +20,7 @@ export class TargetsNodeProvider implements vscode.TreeDataProvider<Target> {
 	readonly onDidChangeTreeData: vscode.Event<Target | undefined | void> = this._onDidChangeTreeData.event;
 
 	getTreeItem(target: Target): vscode.TreeItem | Thenable<vscode.TreeItem> {
-		const treeItem = new vscode.TreeItem(`[${target.Platform}] ${target.Name}`, vscode.TreeItemCollapsibleState.None);
+		const treeItem = new vscode.TreeItem(`${target.Name} [${target.Platform}]`, vscode.TreeItemCollapsibleState.None);
 		treeItem.tooltip = buildTooltip(target);
 		treeItem.iconPath = new vscode.ThemeIcon("vm");
 		treeItem.contextValue = "target";

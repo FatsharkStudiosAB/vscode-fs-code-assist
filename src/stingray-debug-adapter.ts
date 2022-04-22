@@ -117,6 +117,8 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 	expandTableIndex = 0;
 	expandTableCallbacks = new Map<number, { (data: any): void }>();
 
+	showMessages = false;
+
 	// Debugging the debugger.
 	loggingEnabled = !!process.env.FATSHARK_CODE_ASSIST_DEBUG_MODE;
 
@@ -213,8 +215,57 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		}
 	}
 
+	private sendErrorLine(label: string, value: string | undefined, multiline?: boolean) {
+		if (value) {
+			if (!multiline) {
+				this.sendEvent(new DebugAdapter.OutputEvent(`${label}: ${value}\r\n`, 'stderr'));
+			} else {
+				const head = new DebugAdapter.OutputEvent(`<${label}>`, 'stderr');
+				(head as DebugProtocol.OutputEvent).body.group = 'startCollapsed';
+				this.sendEvent(head);
+
+				this.sendEvent(new DebugAdapter.OutputEvent(value, 'stderr'));
+
+				const tail = new DebugAdapter.OutputEvent('', 'stderr');
+				(tail as DebugProtocol.OutputEvent).body.group = 'end';
+				this.sendEvent(tail);
+			}
+		}
+	}
+
 	private onStingrayMessage(data: any) {
-		if (data.type === 'lua_debugger') {
+		if (data.type === 'message') {
+			if (this.showMessages) { // .replace(/\n/g, '\r\n')
+				const category = data.level === 'error' ? 'stderr' : 'stdout';
+				const message = new DebugAdapter.OutputEvent(`[${data.level}][${data.system}] ${data.message}\r\n`, category);
+				const isError = (data.message_type === 'lua_error');
+				if (isError) { // If it is an error, print extra diagnostics.
+					(message as DebugProtocol.OutputEvent).body.group = 'startCollapsed';
+				}
+				this.sendEvent(message);
+				if (isError) { // If it is an error, print extra diagnostics.
+					this.sendErrorLine('Build identifier', data.build_identifier);
+					this.sendErrorLine('Callstack', data.callstack, true);
+					this.sendErrorLine('Console log', data.console_log);
+					this.sendErrorLine('Crash dump', data.crash_dump);
+					this.sendErrorLine('Crash version', data.crash_version);
+					this.sendErrorLine('Deadlock callstack', data.deadlock_callstack, true);
+					this.sendErrorLine('Engine callstack', data.engine_callstack, true);
+					this.sendErrorLine('Error context', data.error_context, true);
+					this.sendErrorLine('Lua callstack', data.lua_callstack, true);
+					this.sendErrorLine('Lua locals', data.lua_locals, true);
+					this.sendErrorLine('Lua self', data.lua_self, true);
+					this.sendErrorLine('Plugins', data.plugins, true);
+					this.sendErrorLine('Product version', data.product_version);
+					this.sendErrorLine('Render caps', data.render_caps, true);
+					this.sendErrorLine('Render settings', data.render_settings, true);
+					this.sendErrorLine('Session', data.session);
+					this.sendErrorLine('System Information', data.system_information, true);
+					const tail = new DebugAdapter.OutputEvent('', 'stderr');
+					(tail as DebugProtocol.OutputEvent).body.group = 'startCollapsed';
+				}
+			}
+		} else if (data.type === 'lua_debugger') {
 			this.handleLegacyMessage(data);
 		} else if (data.type === 'vscode_debug_adapter') {
 			const callback = this.callbacks.get(data.request_id);
@@ -452,10 +503,20 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		});
 	}
 
+	private evaluateDebuggerCommand(expr: string) {
+		if (expr === ".log") {
+			this.showMessages = !this.showMessages;
+			this.sendEvent(new DebugAdapter.OutputEvent(`Show console messages: ${this.showMessages ? 'ON' : 'OFF'}\r\n`, 'console'));
+		}
+	}
+
 	protected async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): Promise<void> {
-		let expression = args.expression;
+		let expression = args.expression.trim();
 		if (args.context === 'hover') {
 			expression = expression.replace(/:/g, '.');
+		} else if (args.context === 'repl' && expression[0] === ".") {
+			this.evaluateDebuggerCommand(expression);
+			return;
 		}
 		const reply = await this.command('eval', { expression: expression, level: args.frameId });
 		if (reply.ok) {
@@ -654,18 +715,22 @@ class StingrayDebugSession extends DebugAdapter.DebugSession {
 		let executor;
 		if (record.type === 'table' || record.type === 'function') {
 			executor = async (resolve: any) => {
-				const expandResponse = await this.command('expandEval', {
-					id: evalId,
-					path: path,
-				});
-				const children: StingrayVariable[] = expandResponse.result.children.map((child: any, index: number) => {
+				let children = record.children;
+				if (!children) {
+					const expandResponse = await this.command('expandEval', {
+						id: evalId,
+						path: path,
+					});
+					children = expandResponse.result.children;
+				}
+				const childrenVars: StingrayVariable[] = children.map((child: any, index: number) => {
 					if (child.name.startsWith('(')) {
 						index = -1; // Special magic index.
 					}
 					return this.expandEval(child, evalId, [...path, index], (record.type === 'function'));
 				});
-				children.sort(StingrayVariable.compare);
-				resolve(children);
+				childrenVars.sort(StingrayVariable.compare);
+				resolve(childrenVars);
 			};
 		}
 		const name = record.name;

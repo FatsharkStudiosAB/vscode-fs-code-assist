@@ -48,7 +48,7 @@ export class ConnectionsNodeProvider implements vscode.TreeDataProvider<Stingray
 		treeItem.contextValue = "connection";
 		treeItem.command = {
 			title: "Focus output",
-			command: "fatshark-code-assist.Connection._focusOutput",
+			command: "fatshark-code-assist.Connection._onSelected",
 			arguments: [ connection ],
 		};
 		return treeItem;

@@ -7,9 +7,9 @@ import * as SJSON from 'simplified-json';
 import { ToolchainConfig } from './stingray-config';
 
 type LaunchOptions = {
-	/** The UUID of the target to launch the instance on.*/
+	/** The UUID of the target to launch the instance on. */
 	targetId: string;
-	/** Extra arguments to the Stingray process */
+	/** Extra arguments to the Stingray process. */
 	arguments?: string;
 };
 

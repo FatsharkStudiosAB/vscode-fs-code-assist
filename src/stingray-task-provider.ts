@@ -149,7 +149,7 @@ class StingrayCompileTaskTerminal implements vscode.Pseudoterminal {
 			const progress = this.applyStyle(`[progress]`, "33");
 			const file = this.applyStyle(`${data.file ?? "<unknown file>"}`, "3");
 			this.write("compile_progress", `${progress} ${i} / ${count} ${file}`);
-		} else if (data.type === "c") {
+		} else if (data.type === "compile_done") {
 			this.write("compile_done", `status=${data.status}, file=${data.file}`);
 		} else if (data.type === "message") {
 			let message = data.message;

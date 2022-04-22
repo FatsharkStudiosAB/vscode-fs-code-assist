@@ -178,7 +178,7 @@ class AdocCompletionFeatures implements
 		const args = signature.args.map((arg, i) => {
 			return `${arg} : ${signature.types[i]}`;
 		}).join(', ');
-		const rets = signature.rets ? ` : ${signature.rets.join('|')}` : '';
+		const rets = signature.rets ? ` : ${signature.rets.join(', ')}` : '';
 		return `${name}(${args})${rets}`;
 	}
 
@@ -234,7 +234,7 @@ class AdocCompletionFeatures implements
 			const object = expression.substring(0, dotIndex);
 			const method = expression.substring(dotIndex+1);
 			const command = formatCommand("fatshark-code-assist._openDocumentation", { object, method });
-			mdString.appendMarkdown(`\n\n\n[$(link-external) Open local documentation](${command})`);
+			mdString.appendMarkdown(`\n\n\n[Open local documentation $(link-external)](${command})`);
 			mdString.supportThemeIcons = true;
 			mdString.isTrusted = true;
 		}

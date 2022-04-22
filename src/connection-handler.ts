@@ -45,7 +45,7 @@ export class ConnectionHandler {
 	private _compiler?: StingrayConnection;
 	private _game = new Map<number, StingrayConnection>();
 	private _connectionOutputs = new Map<StingrayConnection, vscode.OutputChannel>();
-	private _identifyInfo = new Map<StingrayConnection, any>();
+	private _identifyInfo = new Map<StingrayConnection, Promise<any>>();
 	private _outputsByName = new Map<string, vscode.OutputChannel>();
 
 	closeAll() {
@@ -131,10 +131,14 @@ export class ConnectionHandler {
 		});
 	}
 
-	async identify(connection: StingrayConnection): Promise<any | null> {
-		const info = this._identifyInfo.get(connection);
-		if (info) {
-			return info;
+	identify(connection: StingrayConnection, forceRefresh?: boolean): Promise<any | null> {
+		if (forceRefresh) {
+			this._identifyInfo.delete(connection);
+		} else {
+			const info = this._identifyInfo.get(connection);
+			if (info) {
+				return info;
+			}
 		}
 
 		let onData: (data: any) => void;
@@ -148,15 +152,13 @@ export class ConnectionHandler {
 			});
 			timeoutId = setTimeout(resolve, IDENTIFY_TIMEOUT, null);
 		});
-
-		connection.sendLua(IDENTIFY_LUA);
-
-		return identifyResult.then((info) => {
-			this._identifyInfo.set(connection, info);
-		}).finally(() => {
+		identifyResult.finally(() => {
 			connection.onDidReceiveData.remove(onData);
 			clearTimeout(timeoutId);
 		});
+		this._identifyInfo.set(connection, identifyResult);
+		connection.sendLua(IDENTIFY_LUA);
+		return identifyResult;
 	}
 }
 
