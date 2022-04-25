@@ -234,7 +234,7 @@ local handlers = {
 				return nil, err
 			end
 		end
-		local environment = request.level and make_environment(request.level + (3+2)) or _G
+		local environment = request.level and make_environment(request.level + (3+3)) or _G
 		setfenv(thunk, environment)
 		local completion = request.completion
 		local ok, results, num_results = pack_pcall(pcall(thunk))
