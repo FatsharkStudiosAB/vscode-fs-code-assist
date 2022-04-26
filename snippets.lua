@@ -34,7 +34,7 @@ local function to_console_string(value)
 		elseif rawget(value, "___is_class_metatable___") or rawget(value, "__class_name") then
 			table_kind = "class"
 		end
-		str = string.format("%s {…}: %p ", table_kind or "table", value)
+		str = string.format("%s {…}: %p", table_kind or "table", value)
 	elseif kind == "function" then
 		str = string.format("ƒ (): %p", value)
 	elseif kind == "userdata" then
@@ -244,11 +244,12 @@ local handlers = {
 		local response
 		if completion or num_results <= 1 then
 			response = format_value(results[1], eval_name, true)
+			results = results[1]
 		else
 			local value_buffer = {}
 			local children = {}
 			for i=1, num_results do
-				children[i] = format_value(results[i], "result#"..i)
+				children[i] = format_value(results[i], "(return#"..i..")")
 				value_buffer[i] = children[i].value
 			end
 			response = {
@@ -259,7 +260,7 @@ local handlers = {
 			}
 		end
 		response.id = #EVAL_REGISTRY+1
-		EVAL_REGISTRY[response.id] = response
+		EVAL_REGISTRY[response.id] = results
 		return response
 	end,
 	expandEval = function(request)
