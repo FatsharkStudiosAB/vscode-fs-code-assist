@@ -311,10 +311,10 @@ export const activate = (context: vscode.ExtensionContext) => {
 		const { object, method } = info;
 		let uriString = `file:///${toolchain.path.replace(/\\/g, "/")}/lua_HTML/obj_stingray_${object}.html`;
 		// The fragment is removed when opened in Firefox.
-		//if (method) {
-		//	uriString += `#sig_stingray_${object}_${method.replace(/_/g, "__")}`;
-		//}
-		const uri = vscode.Uri.file(uriString);
+		if (method) {
+			uriString += `#sig_stingray_${object}_${method.replace(/_/g, "__")}`;
+		}
+		const uri = vscode.Uri.parse(uriString);
 		vscode.env.openExternal(uri);
 
 		// Testing showing docs inside the editor, very buggy.

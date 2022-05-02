@@ -10,51 +10,36 @@ import { formatCommand } from "./utils/vscode";
 const LANGUAGE_SELECTOR = "lua";
 
 class StingrayLuaLanguageServer {
-	private _initialized = false;
-	private _symbols = new Map<String, vscode.SymbolInformation[]>();
-	private _textures = new Map<String, vscode.Uri>();
+	private _symbols?: Promise<Map<String, vscode.SymbolInformation[]>>;
+	private _textures?: Promise<Map<String, vscode.Uri>>;
 
 	constructor() {
 		vscode.workspace.onWillSaveTextDocument(this.onWillSaveTextDocument.bind(this));
 	}
 
-	pushSymbolData(symbol: RawSymbolInformation) {
-		const { name, path, line, char, kind, parent } = symbol;
-		let list = this._symbols.get(name);
-		if (!list) {
-			list = [];
-			this._symbols.set(name, list);
-		}
-		const location = new vscode.Location(vscode.Uri.file(path), new vscode.Position(line, char));
-		list.push(new vscode.SymbolInformation(name, vscode.SymbolKind[kind], parent || "", location));
-	}
-
 	async symbols() {
-		await this._ensureInitialized();
-		return this._symbols;
+		return this._symbols ?? (this._symbols = this.indexLuaFiles());
 	}
 
 	async textures() {
-		await this._ensureInitialized();
-		return this._textures;
+		return this._textures ?? (this._textures = this.indexTextureFiles());
 	}
 
-	async _ensureInitialized() {
-		if (!this._initialized) {
-			this._initialized = true;
-			await this.parseLuaFiles();
-			await this.indexTextureFiles();
-		}
-	}
-
-	async parseLuaFiles(files?: string[], token?: vscode.CancellationToken) {
+	async indexLuaFiles(files?: string[], output?: Map<String, vscode.SymbolInformation[]>) {
 		if (!files) {
 			const uris = await vscode.workspace.findFiles("{foundation,scripts,core}/**/*.lua");
 			files = uris.map((uri) => uri.fsPath);
 		}
-		const indexer = new TaskRunner("parseFileSymbols", files, this.pushSymbolData.bind(this));
-		token?.onCancellationRequested(() => {
-			indexer.abort();
+		const symbols = output ?? new Map<String, vscode.SymbolInformation[]>();
+		const indexer = new TaskRunner("parseFileSymbols", files, (symbol: RawSymbolInformation) => {
+			const { name, path, line, char, kind, parent } = symbol;
+			let list = symbols.get(name);
+			if (!list) {
+				list = [];
+				symbols.set(name, list);
+			}
+			const location = new vscode.Location(vscode.Uri.file(path), new vscode.Position(line, char));
+			list.push(new vscode.SymbolInformation(name, vscode.SymbolKind[kind], parent || "", location));
 		});
 		try {
 			const elapsed = await indexer.run();
@@ -64,28 +49,72 @@ class StingrayLuaLanguageServer {
 		} catch (e) {
 			vscode.window.showErrorMessage((e as Error).message);
 		}
+		return symbols;
 	}
 
 	async indexTextureFiles() {
+		const textures = new Map<String, vscode.Uri>();
 		const uris = await vscode.workspace.findFiles("{.gui_source_textures,gui/1080p/single_textures}/**/*.png");
 		for (const uri of uris) {
-			this._textures.set(basename(uri.path, ".png"), uri);
+			textures.set(basename(uri.path, ".png"), uri);
 		}
+		return textures;
 	}
 
 	onWillSaveTextDocument(event: vscode.TextDocumentWillSaveEvent) {
-		if (event.document.languageId === "lua") {
-			this.parseLuaFiles([ event.document.uri.fsPath ]);
+		if (event.document.languageId === "lua" && this._symbols) {
+			this._symbols = (async () => {
+				const symbols = new Map(await this.symbols());
+				symbols.forEach((infoList, name) => {
+					symbols.set(name, infoList.filter((info) => {
+						return info.location.uri.fsPath !== event.document.uri.fsPath;
+					}));
+				});
+				return await this.indexLuaFiles([ event.document.uri.fsPath ], symbols);
+			})();
 		}
 	}
 }
 
-
 export function activate(context: vscode.ExtensionContext) {
 	const server = new StingrayLuaLanguageServer();
 
+	const linkCache = new Map<String, vscode.LocationLink[]>();
+	const pos0 = new vscode.Position(0, 0);
+	const range00 = new vscode.Range(pos0, pos0);
+	const getLinks = async (document: vscode.TextDocument, position: vscode.Position): Promise<vscode.LocationLink[]|undefined> => {
+		const wordRange = document.getWordRangeAtPosition(position, /"[\w_]+\/[/\w_]+"/);
+		if (!wordRange) {
+			return undefined;
+		}
+		const word = document.getText(wordRange).replace(/"/g, "");
+		let links = linkCache.get(word);
+		if (!links) {
+			const uris = await vscode.workspace.findFiles(`${word}.*`);
+			links = uris.map((uri) => {
+				return {
+					originSelectionRange: wordRange,
+					targetUri: uri,
+					targetRange: range00,
+				};
+			});
+			linkCache.set(word, links);
+		}
+		return links;
+	};
+
+	context.subscriptions.push(vscode.languages.registerDefinitionProvider("sjson", {
+		async provideDefinition(document, position) {
+			return getLinks(document, position);
+		}
+	}));
+
 	context.subscriptions.push(vscode.languages.registerDefinitionProvider(LANGUAGE_SELECTOR, {
 		async provideDefinition(document, position) {
+			const links = await getLinks(document, position);
+			if (links) {
+				return links;
+			}
 			const wordRange = document.getWordRangeAtPosition(position, /[\w_]+/);
 			if (!wordRange) {
 				return undefined;

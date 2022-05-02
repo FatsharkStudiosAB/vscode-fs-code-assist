@@ -8,6 +8,15 @@ local function ctlsub(c)
 	end
 end
 
+local function find_class_name(mt)
+	for k,v in pairs(_G) do
+		if v == mt then
+			return k
+		end
+	end
+	return "<unknown metatable>"
+end
+
 local function pack_pcall(ok, ...)
 	return ok, { ... }, select("#", ...)
 end
@@ -25,12 +34,8 @@ local function to_console_string(value)
 	elseif kind == "table" then
 		local mt = getmetatable(value)
 		local table_kind
-		if type(mt) == "table" then
-			if mt.___is_class_metatable___ then
-				table_kind = table.find(CLASS_LOOKUP, mt)
-			else
-				table_kind = mt.__class_name
-			end
+		if type(mt) == "table" and mt.___is_class_metatable___ then
+			table_kind = mt.__class_name or find_class_name(mt)
 		elseif rawget(value, "___is_class_metatable___") or rawget(value, "__class_name") then
 			table_kind = "class"
 		end
@@ -38,6 +43,7 @@ local function to_console_string(value)
 	elseif kind == "function" then
 		str = string.format("ƒ (): %p", value)
 	elseif kind == "userdata" then
+		 -- The LuaJIT file sentinel crashes the Stingray `tostring()` function.
 		if string.format("%p", value) == "0x00004004" then
 			str = "sentinel"
 		else
@@ -86,7 +92,6 @@ end
 local function format_value(value, name, include_children, is_nested)
 	local kind = type(value)
 	local children
-	local metatable
 	if include_children then
 		if kind == "table" or kind == "function" then
 			children = {}
@@ -106,6 +111,7 @@ local function format_value(value, name, include_children, is_nested)
 					children[#children+1] = format_value(mt, '(metatable)')
 				end
 				local asize, hsize = table_size(value)
+				if hsize > 0 then hsize = 2^hsize end
 				children[#children+1] = format_value(asize, '(size array)')
 				children[#children+1] = format_value(hsize, '(size hash)')
 			end
@@ -119,7 +125,7 @@ local function format_value(value, name, include_children, is_nested)
 		name = to_console_string(name),
 		value = value_str or to_console_string(value),
 		type = kind,
-		children = children, metatable = metatable,
+		children = children,
 	}
 end
 
