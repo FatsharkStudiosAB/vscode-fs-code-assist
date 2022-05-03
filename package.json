@@ -245,10 +245,7 @@
     },
     "languages": [
       {
-        "id": "stingray-output",
-        "mimetypes": [
-          "text/x-code-output"
-        ]
+        "id": "stingray-output"
       },
       {
         "id": "crashlog",

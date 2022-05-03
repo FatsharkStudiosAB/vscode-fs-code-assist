@@ -133,6 +133,29 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}));
 
+	const JIRA_REGEX = /(?<!\/)\b(?:BSP|CTOOL|EN|HON)-\d+/d;
+	context.subscriptions.push(vscode.languages.registerDocumentLinkProvider(LANGUAGE_SELECTOR, {
+		provideDocumentLinks(document, _token) {
+			const links: vscode.DocumentLink[] = [];
+			for (let i=0; i < document.lineCount; ++i) {
+				const line = document.lineAt(i);
+				const text = line.text;
+
+				const matches = JIRA_REGEX.exec(text);
+				if (matches) {
+					const indices = (<any> matches).indices;
+					const range = new vscode.Range(i, indices[0][0], i, indices[0][1]);
+					const uri = vscode.Uri.parse(`https://fatshark.atlassian.net/browse/${matches[0]}`);
+					const link = new vscode.DocumentLink(range, uri);
+					link.tooltip = 'Open JIRA';
+					links.push(link);
+					continue;
+				}
+			}
+			return links;
+		}
+	}));
+
 	const preprocessorDimDecoration = vscode.window.createTextEditorDecorationType({
 		opacity: "0.62",
 		//backgroundColor: backgroundColor,

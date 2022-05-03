@@ -104,7 +104,7 @@ export class ConnectionHandler {
 
 		let outputChannel: vscode.OutputChannel;
 		connection.onDidConnect.add(() => {
-			outputChannel = vscode.window.createOutputChannel(name);
+			outputChannel = vscode.window.createOutputChannel(name, "stingray-output");
 			if (show) {
 				outputChannel.show();
 			}
