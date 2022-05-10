@@ -82,11 +82,12 @@ local function resolve_path(value, path)
 end
 
 local ffi = require("ffi")
-local function table_size(t)
+local function table_data(t)
 	local addr = string.match(string.format("%p", t), "0x(%x+)")
 	assert(addr, "invalid pointer")
-	local ptr = ffi.cast("uint32_t*", tonumber(addr, 16))
-	return ptr[6], ptr[7]
+	local ptr32 = ffi.cast("uint32_t*", tonumber(addr, 16))
+	local ptr8 = ffi.cast("uint8_t*", tonumber(addr, 16))
+	return ptr32[6], ptr32[7], ptr8[7]
 end
 
 local function format_value(value, name, include_children, is_nested)
@@ -108,12 +109,19 @@ local function format_value(value, name, include_children, is_nested)
 			if kind == "table" then
 				local mt = getmetatable(value)
 				if mt ~= nil then
-					children[#children+1] = format_value(mt, '(metatable)')
+					children[#children+1] = format_value(mt, "(metatable)")
 				end
-				local asize, hsize = table_size(value)
-				if hsize > 0 then hsize = 2^hsize end
-				children[#children+1] = format_value(asize, '(size array)')
-				children[#children+1] = format_value(hsize, '(size hash)')
+				local asize, hsize, colosize = table_data(value)
+				if hsize > 0 then hsize = hsize+1 end
+				children[#children+1] = format_value(asize, "(size array)")
+				children[#children+1] = format_value(hsize, "(size hash)")
+				if colosize ~= 0 then
+					children[#children+1] = {
+						name = "(colocated)",
+						value = colosize > 0 and "yes" or "separated",
+						type = "string",
+					}
+				end
 			end
 		end
 	end

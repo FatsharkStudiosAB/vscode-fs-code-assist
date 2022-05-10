@@ -133,23 +133,18 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}));
 
-	const JIRA_REGEX = /(?<!\/)\b(?:BSP|CTOOL|EN|HON)-\d+/d;
+	const JIRA_REGEX = /(?<!\/)\b(?:BSP|CTOOL|EN|HON)-\d+/g;
 	context.subscriptions.push(vscode.languages.registerDocumentLinkProvider(LANGUAGE_SELECTOR, {
 		provideDocumentLinks(document, _token) {
 			const links: vscode.DocumentLink[] = [];
 			for (let i=0; i < document.lineCount; ++i) {
 				const line = document.lineAt(i);
-				const text = line.text;
-
-				const matches = JIRA_REGEX.exec(text);
-				if (matches) {
-					const indices = (<any> matches).indices;
-					const range = new vscode.Range(i, indices[0][0], i, indices[0][1]);
-					const uri = vscode.Uri.parse(`https://fatshark.atlassian.net/browse/${matches[0]}`);
+				for (const match of line.text.matchAll(JIRA_REGEX)) {
+					const range = new vscode.Range(i, match.index!, i,  match.index! + match[0].length);
+					const uri = vscode.Uri.parse(`https://fatshark.atlassian.net/browse/${match[0]}`);
 					const link = new vscode.DocumentLink(range, uri);
 					link.tooltip = 'Open JIRA';
 					links.push(link);
-					continue;
 				}
 			}
 			return links;
