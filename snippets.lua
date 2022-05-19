@@ -14,7 +14,6 @@ local function find_class_name(mt)
 			return k
 		end
 	end
-	return "<unknown metatable>"
 end
 
 local function pack_pcall(ok, ...)
@@ -32,12 +31,14 @@ local function to_console_string(value)
 			str = value
 		end
 	elseif kind == "table" then
-		local mt = getmetatable(value)
 		local table_kind
-		if type(mt) == "table" and mt.___is_class_metatable___ then
-			table_kind = mt.__class_name or find_class_name(mt)
-		elseif rawget(value, "___is_class_metatable___") or rawget(value, "__class_name") then
+		if rawget(value, "___is_class_metatable___") or rawget(value, "__class_name") then
 			table_kind = "class"
+		else
+			local mt = getmetatable(value)
+			if type(mt) == "table" then
+				table_kind = mt.__class_name or find_class_name(mt) or "<unknown metatable>"
+			end
 		end
 		str = string.format("%s {…}: %p", table_kind or "table", value)
 	elseif kind == "function" then
@@ -240,7 +241,7 @@ local handlers = {
 		-- debug stuff that is currently on the stack. This is *very* brittle.
 		EVAL_COUNT = EVAL_COUNT + 1
 		local eval_name = string.format("eval#%d", EVAL_COUNT)
-		local thunk = loadstring("return ("..request.expression..")", eval_name)
+		local thunk = loadstring("return "..request.expression, eval_name)
 		if not thunk then
 			local err
 			thunk, err = loadstring(request.expression, eval_name)
