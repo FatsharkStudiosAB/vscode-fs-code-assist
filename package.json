@@ -263,7 +263,8 @@
           "Stingray Lua"
         ],
         "extensions": [
-          ".lua"
+          ".lua",
+          ".lua_snippet"
         ]
       },
       {
